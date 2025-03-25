@@ -1,6 +1,7 @@
 import path from 'path'
 import { defineConfig } from 'vitest/config'
 import { loadEnv } from 'vite'
+import dotenv from 'dotenv'
 
 export default defineConfig({
   resolve: {
@@ -24,7 +25,7 @@ export default defineConfig({
     env: {
       // Explicitly load .env file
       ...loadEnv('', process.cwd(), ''),
-      ...require('dotenv').config({ 
+      ...dotenv.config({ 
         path: path.resolve(__dirname, '.env')
       }).parsed
     },

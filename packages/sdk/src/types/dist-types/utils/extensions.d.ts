@@ -1,0 +1,11 @@
+export declare const allExtensions: string[];
+export declare function getFileExtension(filePath: string): string;
+export declare function isMarkdownExtension(extension: string): boolean;
+export declare function isJsonExtension(extension: string): boolean;
+export declare function isPoExtension(extension: string): boolean;
+export declare function isDocxExtension(extension: string): boolean;
+export declare function isPptxExtension(extension: string): boolean;
+export declare function isHtmlExtension(extension: string): boolean;
+export declare function isNoExtension(extension: string): boolean;
+export declare function validateExtension(fileName: string): string;
+export declare function enforceFileId(fileName: string | undefined, content: string | Buffer): string;

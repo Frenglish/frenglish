@@ -1,0 +1,36 @@
+import { SubscriptionTier } from 'src/types/subscription.js';
+import { Team } from './Team.js';
+export declare class Subscription {
+    id: number;
+    teamID: number;
+    price: number;
+    tier: SubscriptionTier;
+    tokensUsedPeriod: number;
+    tokensUsedTotal: number;
+    startingWordsAvailable: number;
+    wordsTranslatedPeriod: number;
+    wordsTranslatedTotal: number;
+    wordsAvailablePerPeriod: number;
+    overagePaidPeriod: number;
+    softLimit: number;
+    hardLimit: number;
+    seatLimit: number;
+    textmapLimit: number;
+    textmapWordCount: number;
+    overagePrice: number;
+    knowledgeBaseDocumentCount: number;
+    knowledgeBaseDocumentLimit: number;
+    startDate: string;
+    isHardLimitReachedEmailSent: boolean;
+    isSoftLimitReachedEmailSent: boolean;
+    isOverageWarningEmailSent: boolean;
+    endDate?: string;
+    lastModifiedAt: string;
+    createdAt: string;
+    stripeSubscriptionId?: string;
+    stripeCustomerId?: string;
+    nextBillingDate?: string;
+    setCreationDate(): void;
+    updateLastModifiedDate(): void;
+    team: Team;
+}

@@ -1,0 +1,45 @@
+import { DataSource } from 'typeorm';
+import { Subscription } from '../entities/Subscription.js';
+import { SubscriptionTier } from 'src/types/subscription.js';
+export declare class SubscriptionService {
+    private subscriptionRepository;
+    constructor(dataSource: DataSource);
+    updateSubscription(updatedSubscription: Partial<Subscription>): Promise<Subscription>;
+    createSubscription(newSubscription: Partial<Subscription>): Promise<Subscription>;
+    addTokens(projectID: number, amount: number): Promise<Subscription>;
+    addWords(projectID: number, amount: number): Promise<Subscription>;
+    updateTextMapWordCount(subscriptionId: number): Promise<Subscription>;
+    getTextmapUsageByTeamID(teamID: number): Promise<number>;
+    calculateOverageCost(teamID: number): Promise<{
+        totalUnpaidAmount: number;
+        totalUnpaidAmountTextmap: number;
+        totalUnpaidAmountTranslation: number;
+        wordsPaidFor: number;
+    }>;
+    handleOverage(teamID: number, forcePayment?: boolean): Promise<Subscription>;
+    resetMonthlyUsage(teamID: number): Promise<void>;
+    getWordsTranslatedPeriodByTeamID(teamID: number): Promise<number>;
+    getTranslationOverageByTeamID(teamID: number): Promise<number>;
+    getTextmapOverageByTeamID(teamID: number): Promise<number>;
+    getOveragePaidByTeamID(teamID: number): Promise<number>;
+    findByStripeSubscriptionId(stripeSubscriptionId: string): Promise<Subscription | null>;
+    updateSubscriptionAfterPayment(newPlanName: SubscriptionTier | undefined, newPrice: number, stripeSubscriptionId: string, stripeCustomerId: string, nextBillingDate: string, teamID: number): Promise<Subscription>;
+    updateHardLimit(subscriptionId: number, newHardLimit: number): Promise<Subscription>;
+    updateSoftLimit(subscriptionId: number, newSoftLimit: number): Promise<Subscription>;
+    deleteSubscriptionById(id: number): Promise<void>;
+    endFutureSubscriptionsByTeamId(teamID: number): Promise<Subscription[]>;
+    clearSubscriptions(): Promise<void>;
+    findSubscriptionById(id: number): Promise<Subscription | null>;
+    findSubscriptionsByTeamId(teamID: number): Promise<Subscription[]>;
+    findFutureSubscriptionsByTeamId(teamID: number): Promise<Subscription[]>;
+    findCurrentSubscriptionByTeamId(teamID: number): Promise<Subscription | null>;
+    findCurrentSubscriptionByStripeCustomerId(stripeCustomerId: string): Promise<Subscription | null>;
+    findCurrentSubscriptionByStripeSubscriptionId(stripeSubscriptionId: string): Promise<Subscription | null>;
+    findByStripeCustomerId(stripeCustomerId: string): Promise<Subscription | null>;
+    findCurrentSubscriptionByEmail(email: string): Promise<Subscription | null>;
+    findAllSubscriptions(): Promise<Subscription[]>;
+    isOverHardLimitByProjectId(projectID: number): Promise<boolean>;
+    findCurrentSubscriptionByProjectId(projectID: number): Promise<Subscription | null>;
+    validateUniqueSubscription(newSubscription: Partial<Subscription>): Promise<void>;
+    validatePaidSubscription(subscription: Partial<Subscription>): void;
+}
