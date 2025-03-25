@@ -5,42 +5,42 @@ import {
   PartialConfiguration,
   parsePartialConfig,
   FileContentWithLanguage,
+  CompletedTranslationResponse,
 } from '@frenglish/utils';
 import { apiRequest } from './api';
 
 /**
  * Submits content for translation and polls until the translation is ready.
  *
- * @param apiKey - The API key for authentication.
- * @param content - The content to translate.
- * @param isFullTranslation - Whether to perform a full translation (default: false).
- * @param filenames - [Optional] filenames associated with the content.
- * @param partialConfig - [Optional] partial configuration to override default settings.
- * @returns The completed translation response, or undefined if polling timed out.
+ * @param {string[]} content - The content to translate.
+ * @param {boolean} [isFullTranslation=false] - Whether to perform a full translation.
+ * @param {string[]} [filenames=[]] - Filenames associated with the content.
+ * @param {PartialConfiguration} [partialConfig={}] - Partial configuration to override default settings.
+ * @returns {Promise<CompletedTranslationResponse | undefined>} A promise that resolves to:
+ *   - RequestTranslationResponse with translationId and content if successful
+ *   - undefined if polling times out after 30 minutes
  * @throws If the request fails or the translation is cancelled.
  */
 export async function translate(
-  apiKey: string,
   content: string[],
   isFullTranslation = false,
   filenames: string[] = [],
   partialConfig: PartialConfiguration = {},
-): Promise<RequestTranslationResponse | undefined> {
+): Promise<CompletedTranslationResponse | undefined> {
   const POLLING_INTERVAL = 500;
   const MAX_POLLING_TIME = 1800000;
   const startTime = Date.now() - POLLING_INTERVAL;
   const parsedConfig = await parsePartialConfig(partialConfig);
 
   const data = await apiRequest<RequestTranslationResponse>('/api/translation/request-translation', {
-    apiKey,
-    body: { content, apiKey, isFullTranslation, filenames, partialConfig: parsedConfig },
+    body: { content, isFullTranslation, filenames, partialConfig: parsedConfig },
     errorContext: 'Failed to request translation',
   });
 
   while (Date.now() - startTime < MAX_POLLING_TIME) {
-    const translationStatus = await getTranslationStatus(apiKey, data.translationId);
+    const translationStatus = await getTranslationStatus(data.translationId);
     if (translationStatus === TranslationStatus.COMPLETED) {
-      const translationContent = await getTranslationContent(apiKey, data.translationId);
+      const translationContent = await getTranslationContent(data.translationId);
       return { translationId: data.translationId, content: translationContent };
     } else if (translationStatus === TranslationStatus.CANCELLED) {
       throw new Error('Translation cancelled');
@@ -53,14 +53,19 @@ export async function translate(
 /**
  * Translates a single string and returns the translated result.
  *
- * @param apiKey - The API key for authentication.
- * @param content - The string content to translate.
- * @param lang - The target language code.
- * @param partialConfig - Optional overrides to the default configuration.
- * @returns The translated string.
+ * @param {string} content - The string content to translate.
+ * @param {string} lang - The target language code.
+ * @param {PartialConfiguration} [partialConfig={}] - Optional overrides to the default configuration.
+ * @returns {Promise<string | undefined>} A promise that resolves to:
+ *   - The translated string if successful
+ *   - undefined if polling times out after 30 minutes
  * @throws If the translation is cancelled, the language is unsupported, or the request fails.
  */
-export async function translateString(apiKey: string, content: string, lang: string, partialConfig: PartialConfiguration = {}): Promise<string | undefined> {
+export async function translateString(
+  content: string, 
+  lang: string, 
+  partialConfig: PartialConfiguration = {}
+): Promise<string | undefined> {
   const POLLING_INTERVAL = 500;
   const MAX_POLLING_TIME = 1800000;
   const startTime = Date.now() - POLLING_INTERVAL;
@@ -75,18 +80,17 @@ export async function translateString(apiKey: string, content: string, lang: str
   }
 
   const data = await apiRequest<RequestTranslationResponse>('/api/translation/request-translation-string', {
-    apiKey,
-    body: { content, apiKey, lang, partialConfig: parsedConfig },
+    body: { content, lang, partialConfig: parsedConfig },
     errorContext: 'Failed to request translation string',
   });
 
   while (Date.now() - startTime < MAX_POLLING_TIME) {
-    const translationStatus = await getTranslationStatus(apiKey, data.translationId);
+    const translationStatus = await getTranslationStatus(data.translationId);
     if (translationStatus === TranslationStatus.COMPLETED) {
-      const content = await getTranslationContent(apiKey, data.translationId);
+      const content = await getTranslationContent(data.translationId);
       const translatedContent = content[0]?.files[0]?.content;
       if (translatedContent) {
-        const parsedContent = JSON.parse(translatedContent);
+        const parsedContent = JSON.parse(translatedContent as string);
         return Object.values(parsedContent)[0] as string;
       }
       return undefined;
@@ -101,15 +105,13 @@ export async function translateString(apiKey: string, content: string, lang: str
 /**
  * Retrieves the current status of a submitted translation request.
  *
- * @param apiKey - The API key for authentication.
- * @param translationId - The unique ID of the translation request.
- * @returns The current translation status.
+ * @param {number} translationId - The unique ID of the translation request.
+ * @returns {Promise<TranslationStatus>} A promise that resolves to the current translation status (e.g. 'COMPLETED', 'CANCELLED', 'IN_PROGRESS')
  * @throws If the request fails.
  */
-export async function getTranslationStatus(apiKey: string, translationId: number): Promise<TranslationStatus> {
+export async function getTranslationStatus(translationId: number): Promise<TranslationStatus> {
   const data = await apiRequest<{ status: TranslationStatus }>('/api/translation/get-status', {
-    apiKey,
-    body: { translationId, apiKey },
+    body: { translationId },
     errorContext: 'Failed to get translation status',
   });
   return data.status;
@@ -118,15 +120,15 @@ export async function getTranslationStatus(apiKey: string, translationId: number
 /**
  * Fetches the translated content once the translation is complete.
  *
- * @param apiKey - The API key for authentication.
- * @param translationId - The unique ID of the translation request.
- * @returns An array of translation responses.
+ * @param {number} translationId - The unique ID of the translation request.
+ * @returns {Promise<TranslationResponse[]>} A promise that resolves to an array of translation responses, each containing:
+ *   - language: The target language code
+ *   - files: Array of translated file contents
  * @throws If the request fails.
  */
-export async function getTranslationContent(apiKey: string, translationId: number): Promise<TranslationResponse[]> {
+export async function getTranslationContent(translationId: number): Promise<TranslationResponse[]> {
   return apiRequest<TranslationResponse[]>('/api/translation/get-translation', {
-    apiKey,
-    body: { translationId, apiKey },
+    body: { translationId },
     errorContext: 'Failed to get translation content',
   });
 }
@@ -135,14 +137,13 @@ export async function getTranslationContent(apiKey: string, translationId: numbe
  * Fetches the project's current text map for translation tracking. This will contain all the translations for your project.
  * The text map keeps the translations consistent, so if you use the same sentences, it will not translate them again and will return the same result.
  *
- * @param apiKey - The API key for authentication.
- * @returns A `File` object containing the text map or `null` if none exists.
+ * @returns {Promise<{ content: string } | null>} A promise that resolves to:
+ *   - An object containing the text map content if it exists
+ *   - null if no text map exists
  * @throws If the request fails.
  */
-export async function getTextMap(apiKey: string): Promise<File | null> {
-  return apiRequest<File | null>('/api/project/request-text-map', {
-    apiKey,
-    body: { apiKey },
+export async function getTextMap(): Promise<{ content: string } | null> {
+  return apiRequest<{ content: string } | null>('/api/project/request-text-map', {
     errorContext: 'Failed to fetch project text map',
   });
 }
@@ -150,13 +151,11 @@ export async function getTextMap(apiKey: string): Promise<File | null> {
 /**
  * Retrieves the list of languages supported by the Frenglish translation service.
  *
- * @param apiKey - The API key used for authentication.
- * @returns An array of supported language codes.
+ * @returns {Promise<string[]>} A promise that resolves to an array of supported language codes (e.g. ['en', 'fr', 'es'])
  * @throws If the request fails or the API responds with an error.
  */
-export async function getSupportedLanguages(apiKey: string) {
+export async function getSupportedLanguages(): Promise<string[]> {
   return apiRequest<string[]>('/api/translation/supported-languages', {
-    body: { apiKey },
     errorContext: 'Failed to get supported languages',
   });
 }
@@ -164,10 +163,10 @@ export async function getSupportedLanguages(apiKey: string) {
 /**
  * Retrieves the list of file types supported for translation uploads.
  *
- * @returns An array of supported file type extensions or MIME types.
+ * @returns {Promise<string[]>} A promise that resolves to an array of supported file extensions (e.g. ['.txt', '.json', '.md'])
  * @throws If the request fails or the API responds with an error.
  */
-export async function getSupportedFileTypes() {
+export async function getSupportedFileTypes(): Promise<string[]> {
   return apiRequest<string[]>('/api/translation/supported-file-types', {
     errorContext: 'Failed to get supported file types',
   });
@@ -176,15 +175,15 @@ export async function getSupportedFileTypes() {
 /**
  * Uploads one or more files for translation, typically used as base files to compare against.
  *
- * @param apiKey - The API key used for authentication.
- * @param files - An array of files with language metadata and content.
- * @returns The API response from the upload endpoint.
+ * @param {FileContentWithLanguage[]} files - An array of files with language metadata and content.
+ * @returns {Promise<{ message: string, originFilesInfo: Array<{ fileId: string, originS3Version: string }> }>} A promise that resolves to:
+ *   - message: Success message
+ *   - originFilesInfo: Array of uploaded file information
  * @throws If the upload fails or the API responds with an error.
  */
-export async function upload(apiKey: string, files: FileContentWithLanguage[]) {
+export async function upload(files: FileContentWithLanguage[]): Promise<{ message: string, originFilesInfo: Array<{ fileId: string, originS3Version: string }> }> {
   return apiRequest('/api/translation/upload-files', {
-    apiKey,
-    body: { files, apiKey },
+    body: { files },
     errorContext: 'Failed to upload files',
   });
 }

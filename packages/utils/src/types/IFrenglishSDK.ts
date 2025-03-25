@@ -1,7 +1,5 @@
 import { Configuration, PartialConfiguration } from './configuration';
-import { FileContentWithLanguage, RequestTranslationResponse, TranslationResponse } from './api';
-import { File } from './file';
-import { TranslationStatus } from './translation';
+import { TranslationResponse, FileContentWithLanguage, RequestTranslationResponse, TranslationStatus } from './translation';
 
 export interface IFrenglishSDK {
   registerWebhook(webhookUrl: string): Promise<void>;

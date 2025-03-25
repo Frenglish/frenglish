@@ -44,6 +44,9 @@ export async function translate(
     const originLanguage = (await frenglish.getDefaultConfiguration()).originLanguage;
     const supportedFileTypes = await frenglish.getSupportedFileTypes();
     const supportedLanguages = await frenglish.getSupportedLanguages();
+    if (!originLanguage) {
+      throw new Error('Origin language not found');
+    }
 
     const languageFiles = await findLanguageFilesToTranslate(
       customPath,
@@ -81,12 +84,12 @@ export async function translate(
     console.log('Uploading files and creating translation...');
     console.log('Is full translation:', isFullTranslation);
 
-    const translationResponse = await frenglish.translate({
-      content: contents,
+    const translationResponse = await frenglish.translate(
+      contents,
       isFullTranslation,
-      filenames: fileIDs,
-      partialConfig,
-    });
+      fileIDs,
+      partialConfig
+    );
 
     if (translationResponse?.content) {
       for (const languageData of translationResponse.content) {

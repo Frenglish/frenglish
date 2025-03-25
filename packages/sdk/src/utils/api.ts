@@ -18,10 +18,16 @@ export async function apiRequest<T>(
     headers['Authorization'] = `Bearer ${apiKey}`;
   }
 
+  // Remove apiKey from body if it exists
+  const requestBody = body ? { ...body } : undefined;
+  if (requestBody && 'apiKey' in requestBody) {
+    delete requestBody.apiKey;
+  }
+
   const response = await fetch(`${FRENGLISH_BACKEND_URL}${endpoint}`, {
     method: 'POST',
     headers,
-    body: body ? JSON.stringify(body) : undefined,
+    body: requestBody ? JSON.stringify(requestBody) : undefined,
   });
 
   if (!response.ok) {

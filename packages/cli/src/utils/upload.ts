@@ -76,7 +76,7 @@ export async function upload(
     filesToUpload.forEach((file) => console.log(`- ${file.fileId}`));
 
     try {
-      await frenglish.upload({ files: filesToUpload });
+      await frenglish.upload(filesToUpload);
       console.log(`${filesToUpload.length} files uploaded successfully`);
     } catch (uploadError) {
       console.error('Error uploading files:', uploadError);
