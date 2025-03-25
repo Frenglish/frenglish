@@ -1,163 +1,205 @@
 // src/index.ts
-import { apiRequest } from './utils/api';
-import { PartialConfiguration, Configuration } from '@frenglish/utils';
-import { FileContentWithLanguage, RequestTranslationResponse, TranslationResponse } from '@frenglish/utils';
+import { PartialConfiguration, Configuration, FlatJSON } from '@frenglish/utils';
+import { FileContentWithLanguage, TranslationResponse } from '@frenglish/utils';
 import { TranslationStatus } from '@frenglish/utils';
-import { parsePartialConfig } from '@frenglish/utils';
-import { getTranslationStatus, getTranslationContent } from './utils/translation';
+import {
+  translate as translateUtil,
+  translateString as translateStringUtil,
+  getTranslationStatus as getTranslationStatusUtil,
+  getTranslationContent as getTranslationContentUtil,
+  getTextMap as getTextMapUtil,
+  getSupportedFileTypes as getSupportedFileTypesUtil,
+  getSupportedLanguages as getSupportedLanguagesUtil,
+  upload as uploadUtil
+} from './utils/translation';
+import {
+  getDefaultConfiguration as getDefaultConfigurationUtil,
+  getProjectSupportedLanguages as getProjectSupportedLanguagesUtil,
+} from './utils/configuration';
+import { registerWebhook as registerWebhookUtil } from './utils/webhook';
+import { getProjectDomain as getProjectDomainUtil, getPublicAPIKeyFromDomain as getPublicAPIKeyFromDomainUtil } from './utils/project';
 
 /**
- * Creates a Frenglish SDK instance configured with the provided API key.
+ * Creates a Frenglish SDK instance for handling translations and configuration.
+ * This is the main entry point for interacting with the Frenglish translation service.
+ * 
+ * @param {string} apiKey - The API key for authentication with the Frenglish service
+ * @returns {FrenglishSDK} An instance of the Frenglish SDK with all available methods
  */
 export const FrenglishSDK = (apiKey: string) => {
   return {
-    // Translation functions
+    /**
+     * Translates an array of content strings with optional configuration.
+     * This method will poll for the translation result until it's complete or cancelled.
+     * 
+     * @param {string[]} content - Array of content strings to translate
+     * @param {boolean} [isFullTranslation=false] - Whether to perform a full translation or partial (the default is set to true so that we would reuse the existing translation)
+     * @param {string[]} [filenames=[]] - Optional array of filenames corresponding to content
+     * @param {PartialConfiguration} [partialConfig={}] - Optional configuration overrides
+     * @returns {Promise<{ translationId: number, content: TranslationResponse[] }>} 
+     *          Translation ID and content if successful
+     * @throws {Error} If translation is cancelled or request fails
+     * 
+     * @example
+     * const result = await sdk.translate(
+     *   ['Hello world', 'Welcome'],
+     *   true,
+     *   ['greeting.txt', 'welcome.txt']
+     * );
+     */
     translate: async (
       content: string[], 
       isFullTranslation: boolean = false, 
       filenames: string[] = [], 
       partialConfig: PartialConfiguration = {}
-    ): Promise<{ translationId: number, content: TranslationResponse[] } | undefined> => {
-      const POLLING_INTERVAL = 500;
-      const MAX_POLLING_TIME = 1800000;
-      const startTime = Date.now() - POLLING_INTERVAL;
-      const parsedConfig = await parsePartialConfig(partialConfig);
-
-      const data = await apiRequest<RequestTranslationResponse>('/api/translation/request-translation', {
-        body: { content, isFullTranslation, filenames, partialConfig: parsedConfig },
-        errorContext: 'Failed to request translation',
-      });
-
-      while (Date.now() - startTime < MAX_POLLING_TIME) {
-        const translationStatus = await getTranslationStatus(data.translationId);
-        if (translationStatus === TranslationStatus.COMPLETED) {
-          const translationContent = await getTranslationContent(data.translationId);
-          return { translationId: data.translationId, content: translationContent };
-        } else if (translationStatus === TranslationStatus.CANCELLED) {
-          throw new Error('Translation cancelled');
-        }
-
-        await new Promise(res => setTimeout(res, POLLING_INTERVAL));
-      }
+    ): Promise<{ translationId: number, content: TranslationResponse[] }> => {
+      return translateUtil(content, apiKey, isFullTranslation, filenames, partialConfig);
     },
 
+    /**
+     * Translates a single string to a specified target language.
+     * Includes validation of supported languages and polling for results.
+     * 
+     * @param {string} content - The string content to translate
+     * @param {string} lang - Target language code (use getSupportedLanguages() to get valid codes)
+     * @param {PartialConfiguration} [partialConfig={}] - Optional configuration overrides
+     * @returns {Promise<string | undefined>} Translated string if successful, undefined if not found
+     * @throws {Error} If language is not supported, translation is cancelled, or request fails
+     * 
+     * @example
+     * const translated = await sdk.translateString('Hello world', 'fr');
+     */
     translateString: async (
       content: string, 
       lang: string, 
       partialConfig: PartialConfiguration = {}
     ): Promise<string | undefined> => {
-      const POLLING_INTERVAL = 500;
-      const MAX_POLLING_TIME = 1800000;
-      const startTime = Date.now() - POLLING_INTERVAL;
-      const parsedConfig = await parsePartialConfig(partialConfig);
-
-      const supportedLanguages = await apiRequest<string[]>('/api/translation/supported-languages', {
-        errorContext: 'Failed to get supported languages',
-      });
-
-      if (!supportedLanguages.includes(lang)) {
-        throw new Error(`Language '${lang}' is not supported. Supported languages are: ${supportedLanguages.join(', ')}`);
-      }
-
-      const data = await apiRequest<RequestTranslationResponse>('/api/translation/request-translation-string', {
-        body: { content, lang, partialConfig: parsedConfig },
-        errorContext: 'Failed to request translation string',
-      });
-
-      while (Date.now() - startTime < MAX_POLLING_TIME) {
-        const translationStatus = await getTranslationStatus(data.translationId);
-        if (translationStatus === TranslationStatus.COMPLETED) {
-          const content = await getTranslationContent(data.translationId);
-          const translatedContent = content[0]?.files[0]?.content;
-          if (translatedContent) {
-            const parsedContent = JSON.parse(translatedContent as string);
-            return Object.values(parsedContent)[0] as string;
-          }
-          return undefined;
-        } else if (translationStatus === TranslationStatus.CANCELLED) {
-          throw new Error('Translation cancelled');
-        }
-
-        await new Promise(resolve => setTimeout(resolve, POLLING_INTERVAL));
-      }
+      return translateStringUtil(content, lang, apiKey, partialConfig);
     },
 
+    /**
+     * Gets the current status of a translation request.
+     * 
+     * @param {number} translationId - ID of the translation to check
+     * @returns {Promise<TranslationStatus>} Current status of the translation
+     * @throws {Error} If the status check fails
+     * 
+     * @example
+     * const status = await sdk.getTranslationStatus(12345);
+     */
     getTranslationStatus: async (translationId: number): Promise<TranslationStatus> => {
-      const data = await apiRequest<{ status: TranslationStatus }>('/api/translation/get-status', {
-        body: { translationId },
-        errorContext: 'Failed to get translation status',
-      });
-      return data.status;
+      return getTranslationStatusUtil(translationId, apiKey);
     },
 
+    /**
+     * Retrieves the content of a completed translation.
+     * 
+     * @param {number} translationId - ID of the translation to retrieve
+     * @returns {Promise<TranslationResponse[]>} Array of translation responses
+     * @throws {Error} If content retrieval fails
+     */
     getTranslationContent: async (translationId: number): Promise<TranslationResponse[]> => {
-      return apiRequest<TranslationResponse[]>('/api/translation/get-translation', {
-        body: { translationId },
-        errorContext: 'Failed to get translation content',
-      });
+      return getTranslationContentUtil(translationId, apiKey);
     },
 
-    getTextMap: async (): Promise<{ content: string } | null> => {
-      return apiRequest<{ content: string } | null>('/api/project/request-text-map', {
-        errorContext: 'Failed to fetch project text map',
-      });
+    /**
+     * Retrieves the project's text map, which contains mappings of text content.
+     * 
+     * @returns {Promise<{ content: FlatJSON[] } | null>} Text map content if exists, null otherwise
+     * @throws {Error} If text map retrieval fails
+     */
+    getTextMap: async (): Promise<{ content: FlatJSON[] } | null> => {
+      return getTextMapUtil(apiKey);
     },
 
-    // Configuration functions
+    /**
+     * Retrieves the default configuration settings for translations.
+     * 
+     * @returns {Promise<Configuration>} Default configuration object [{"id": "1234567890", "originLanguage": "en", "languages": ["fr", "es"]}]
+     * @throws {Error} If configuration retrieval fails
+     */
     getDefaultConfiguration: async (): Promise<Configuration> => {
-      return apiRequest<Configuration>('/api/configuration/get-default-configuration', {
-        errorContext: 'Failed to get default configuration',
-      });
+      return getDefaultConfigurationUtil(apiKey);
     },
 
+    /**
+     * Gets the list of languages supported by the project and the origin language.
+     * 
+     * @returns {Promise<{ languages: string[], originLanguage: string }>} 
+     *          Object containing supported languages and origin language [{"languages": ["en", "fr", "es"], "originLanguage": "en"}]
+     * @throws {Error} If language information retrieval fails
+     */
     getProjectSupportedLanguages: async (): Promise<{ languages: string[], originLanguage: string }> => {
-      return apiRequest<{ languages: string[], originLanguage: string }>('/api/configuration/get-project-supported-languages', {
-        errorContext: 'Failed to get project supported languages',
-      });
+      return getProjectSupportedLanguagesUtil(apiKey);
     },
 
-    // Project functions
+    /**
+     * Gets the domain URL associated with the current project.
+     * 
+     * @returns {Promise<string>} Project's domain URL [https://example.com]
+     * @throws {Error} If domain retrieval fails
+     */
     getProjectDomain: async (): Promise<string> => {
-      return apiRequest<string>('/api/project/get-domain-url', {
-        errorContext: 'Failed to get project domain',
-      });
+      return getProjectDomainUtil(apiKey);
     },
 
+    /**
+     * Retrieves the public API key associated with a given domain.
+     * 
+     * @param {string} domainURL - Domain URL to get the API key for [https://example.com]
+     * @returns {Promise<string>} Public API key for the domain
+     * @throws {Error} If API key retrieval fails
+     */
     getPublicAPIKeyFromDomain: async (domainURL: string): Promise<string> => {
-      return apiRequest<string>('/api/project/get-public-api-key-from-domain', {
-        body: { domainURL },
-        errorContext: 'Failed to get public API key from domain',
-      });
+      return getPublicAPIKeyFromDomainUtil(apiKey, domainURL);
     },
 
-    // Translation utility functions
+    /**
+     * Gets a list of file types supported for translation.
+     * 
+     * @returns {Promise<string[]>} Array of supported file extensions [.txt, .json, .md, ...]
+     * @throws {Error} If file type information retrieval fails
+     */
     getSupportedFileTypes: async (): Promise<string[]> => {
-      return apiRequest<string[]>('/api/translation/supported-file-types', {
-        errorContext: 'Failed to get supported file types',
-      });
+      return getSupportedFileTypesUtil(apiKey);
     },
 
+    /**
+     * Gets a list of languages supported for translation.
+     * 
+     * @returns {Promise<string[]>} Array of supported language codes [en, fr, es, ...]
+     * @throws {Error} If supported languages retrieval fails
+     */
     getSupportedLanguages: async (): Promise<string[]> => {
-      return apiRequest<string[]>('/api/translation/supported-languages', {
-        errorContext: 'Failed to get supported languages',
-      });
+      return getSupportedLanguagesUtil(apiKey);
     },
 
+    /**
+     * Uploads files for translation with their associated language information.
+     * 
+     * @param {FileContentWithLanguage[]} files - Array of file contents with language metadata [{"content": "Hello world", "language": "en"}]
+     * @returns {Promise<{ message: string, originFilesInfo: Array<{ fileId: string, originS3Version: string }> }>}
+     *          Upload confirmation and file information
+     * @throws {Error} If file upload fails
+     */
     upload: async (files: FileContentWithLanguage[]): Promise<{ message: string, originFilesInfo: Array<{ fileId: string, originS3Version: string }> }> => {
-      return apiRequest('/api/translation/upload-files', {
-        body: { files },
-        errorContext: 'Failed to upload files',
-      });
+      return uploadUtil(files, apiKey);
     },
 
-    // Webhook functions
+    /**
+     * Registers a webhook URL to receive translation status updates.
+     * 
+     * @param {string} webhookUrl - URL that will receive webhook notifications
+     * @returns {Promise<void>}
+     * @throws {Error} If webhook registration fails
+     * 
+     * @example
+     * await sdk.registerWebhook('https://api.myapp.com/translation-webhook');
+     */
     registerWebhook: async (webhookUrl: string): Promise<void> => {
-      return apiRequest('/api/webhook/register-webhook', {
-        body: { webhookUrl },
-        errorContext: 'Failed to register webhook',
-      });
+      return registerWebhookUtil(webhookUrl, apiKey);
     },
   };
 };
-
 export type FrenglishSDK = ReturnType<typeof FrenglishSDK>;
+

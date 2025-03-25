@@ -1,5 +1,3 @@
-const enforceNoLocalhostRule = require('./.eslint/rules/enforce-no-localhost');
-
 module.exports = {
   root: true,
   parser: '@typescript-eslint/parser',
@@ -18,21 +16,26 @@ module.exports = {
   },
   ignorePatterns: ['dist', 'node_modules'],
   rules: {
-    // Use your custom rule under a made-up name
-    'frenglish/no-localhost': 'error',
+    'no-restricted-syntax': [
+      'error',
+      {
+        selector: 'VariableDeclarator[id.name="FRENGLISH_BACKEND_URL"] Literal[value=/localhost/]',
+        message: 'FRENGLISH_BACKEND_URL should not be set to a localhost URL.'
+      }
+    ]
   },
   overrides: [
     {
       files: ['**/*.ts'],
       rules: {
-        'frenglish/no-localhost': 'error',
+        'no-restricted-syntax': [
+          'error',
+          {
+            selector: 'VariableDeclarator[id.name="FRENGLISH_BACKEND_URL"] Literal[value=/localhost/]',
+            message: 'FRENGLISH_BACKEND_URL should not be set to a localhost URL.'
+          }
+        ]
       },
     },
   ],
-  // Register your custom rule here
-  settings: {
-    customRules: {
-      'frenglish/no-localhost': enforceNoLocalhostRule,
-    },
-  },
 };

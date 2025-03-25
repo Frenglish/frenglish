@@ -14,11 +14,6 @@ export interface Configuration {
     createdAt: string | null;
     lastModifiedAt: string | null;
 }
-
-/**
- * A partial configuration that allows overriding specific settings of the default Configuration.
- * All properties are optional, allowing for selective updates to the configuration.
- */
 export type PartialConfiguration = Partial<Configuration>;
 
 export interface LanguageSelector {

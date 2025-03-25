@@ -4,6 +4,7 @@ export async function apiRequest<T>(
   endpoint: string,
   options?: {
     apiKey?: string;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     body?: any;
     errorContext?: string;
   }

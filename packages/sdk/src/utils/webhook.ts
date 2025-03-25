@@ -6,8 +6,9 @@ import { apiRequest } from "./api";
  * @param webhookUrl - The URL to receive webhook callbacks.
  * @throws If the registration fails or the API responds with an error.
  */
-export async function registerWebhook(webhookUrl: string): Promise<void> {
+export async function registerWebhook(webhookUrl: string, privateApiKey: string): Promise<void> {
   await apiRequest<void>('/api/webhook/register-webhook', {
+    apiKey: privateApiKey,
     body: { webhookUrl },
     errorContext: 'Failed to register webhook',
   });

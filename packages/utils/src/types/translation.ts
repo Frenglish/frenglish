@@ -39,3 +39,9 @@ export interface FileContentWithLanguage {
   /** The language code of the file content (e.g. 'en', 'fr', 'es') */
   language: string;
 }
+
+export interface FlatJSON {
+    path: string[] // Array of keys for giving value in json
+    translationComment?: string // Optional translation comment for the value
+    value: any // Value associated with path in json
+  }
