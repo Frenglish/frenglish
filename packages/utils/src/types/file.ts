@@ -12,4 +12,4 @@ export interface File {
   size: number;
   /** The last modified date of the file */
   lastModified: number;
-} 
+}

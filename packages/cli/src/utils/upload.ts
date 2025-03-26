@@ -1,20 +1,20 @@
-import dotenv from 'dotenv';
-import { FrenglishSDK } from '@frenglish/sdk';
+import dotenv from 'dotenv'
+import { FrenglishSDK } from '@frenglish/sdk'
 import {
   findLanguageFilesToTranslate,
   readFiles,
   validateFiles,
   getRelativePath,
   FileContentWithLanguage,
-} from '@frenglish/utils';
+} from '@frenglish/utils'
 
-dotenv.config();
+dotenv.config()
 
-const TRANSLATION_PATH = process.env.TRANSLATION_PATH!;
-const FRENGLISH_API_KEY = process.env.FRENGLISH_API_KEY;
+const TRANSLATION_PATH = process.env.TRANSLATION_PATH!
+const FRENGLISH_API_KEY = process.env.FRENGLISH_API_KEY
 const EXCLUDED_TRANSLATION_PATH = process.env.EXCLUDED_TRANSLATION_PATH
   ? JSON.parse(process.env.EXCLUDED_TRANSLATION_PATH.replace(/'/g, '"'))
-  : [];
+  : []
 
 /**
  * Uploads translation source files to Frenglish to serve as the base for future comparisons.
@@ -28,13 +28,13 @@ export async function upload(
 ) {
   try {
     if (!FRENGLISH_API_KEY) {
-      throw new Error('FRENGLISH_API_KEY environment variable is not set');
+      throw new Error('FRENGLISH_API_KEY environment variable is not set')
     }
 
-    const frenglish = FrenglishSDK(FRENGLISH_API_KEY);
-    const supportedLanguages = await frenglish.getSupportedLanguages();
-    const supportedFileTypes = await frenglish.getSupportedFileTypes();
-    const projectLanguages = await frenglish.getProjectSupportedLanguages();
+    const frenglish = FrenglishSDK(FRENGLISH_API_KEY)
+    const supportedLanguages = await frenglish.getSupportedLanguages()
+    const supportedFileTypes = await frenglish.getSupportedFileTypes()
+    const projectLanguages = await frenglish.getProjectSupportedLanguages()
 
     const languageFiles = await findLanguageFilesToTranslate(
       customPath,
@@ -42,48 +42,48 @@ export async function upload(
       supportedLanguages,
       supportedFileTypes,
       excludePath,
-    );
+    )
 
-    const filesToUpload: FileContentWithLanguage[] = [];
+    const filesToUpload: FileContentWithLanguage[] = []
 
     for (const [language, files] of languageFiles.entries()) {
       if (supportedLanguages.includes(language)) {
-        const fileContents = await readFiles(files);
+        const fileContents = await readFiles(files)
         const validatedFiles = fileContents
           .map((file) => ({
             ...file,
             language,
             fileId: getRelativePath(customPath, file.fileId, supportedLanguages),
           }))
-          .filter((file): file is typeof file & { fileId: string } => file.fileId !== undefined);
+          .filter((file): file is typeof file & { fileId: string } => file.fileId !== undefined)
 
         if (!validateFiles(validatedFiles)) {
-          console.warn('Some files are invalid');
+          console.warn('Some files are invalid')
         }
 
-        filesToUpload.push(...validatedFiles);
+        filesToUpload.push(...validatedFiles)
       } else {
-        console.log(`Skipping unsupported language: ${language}`);
+        console.log(`Skipping unsupported language: ${language}`)
       }
     }
 
     if (filesToUpload.length === 0) {
-      console.log('No valid files to upload.');
-      return;
+      console.log('No valid files to upload.')
+      return
     }
 
-    console.log('Uploading files:');
-    filesToUpload.forEach((file) => console.log(`- ${file.fileId}`));
+    console.log('Uploading files:')
+    filesToUpload.forEach((file) => console.log(`- ${file.fileId}`))
 
     try {
-      await frenglish.upload(filesToUpload);
-      console.log(`${filesToUpload.length} files uploaded successfully`);
+      await frenglish.upload(filesToUpload)
+      console.log(`${filesToUpload.length} files uploaded successfully`)
     } catch (uploadError) {
-      console.error('Error uploading files:', uploadError);
+      console.error('Error uploading files:', uploadError)
     }
 
-    console.log('All files processed');
+    console.log('All files processed')
   } catch (error) {
-    console.error('Error during upload:', error);
+    console.error('Error during upload:', error)
   }
 }

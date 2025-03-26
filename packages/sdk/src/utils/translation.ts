@@ -7,12 +7,12 @@ import {
   FileContentWithLanguage,
   CompletedTranslationResponse,
   FlatJSON,
-} from '@frenglish/utils';
-import { apiRequest } from './api';
+} from '@frenglish/utils'
+import { apiRequest } from './api'
 
 /**
  * Internal helper function to poll for translation completion.
- * 
+ *
  * @param {number} translationId - ID of the translation to poll for
  * @param {string} apiKey - API key for authentication
  * @param {number} [pollingInterval=500] - Interval between polls in milliseconds
@@ -26,29 +26,29 @@ export const pollForTranslation = async (
   pollingInterval: number = 500,
   maxPollingTime: number = 1800000
 ): Promise<TranslationResponse[]> => {
-  const startTime = Date.now() - pollingInterval;
+  const startTime = Date.now() - pollingInterval
 
   while (Date.now() - startTime < maxPollingTime) {
     const translationStatus = await apiRequest<{ status: TranslationStatus }>('/api/translation/get-status', {
       apiKey,
       body: { translationId },
       errorContext: 'Failed to get translation status',
-    }).then(data => data.status);
+    }).then(data => data.status)
 
     if (translationStatus === TranslationStatus.COMPLETED) {
       return apiRequest<TranslationResponse[]>('/api/translation/get-translation', {
         apiKey,
         body: { translationId },
         errorContext: 'Failed to get translation content',
-      });
+      })
     } else if (translationStatus === TranslationStatus.CANCELLED) {
-      throw new Error('Translation cancelled');
+      throw new Error('Translation cancelled')
     }
 
-    await new Promise(resolve => setTimeout(resolve, pollingInterval));
+    await new Promise(resolve => setTimeout(resolve, pollingInterval))
   }
-  throw new Error('Translation polling timed out');
-};
+  throw new Error('Translation polling timed out')
+}
 
 /**
  * Submits content for translation and polls until the translation is ready.
@@ -68,16 +68,16 @@ export async function translate(
   filenames: string[] = [],
   partialConfig: PartialConfiguration = {},
 ): Promise<CompletedTranslationResponse> {
-  const parsedConfig = await parsePartialConfig(partialConfig);
+  const parsedConfig = await parsePartialConfig(partialConfig)
 
   const data = await apiRequest<RequestTranslationResponse>('/api/translation/request-translation', {
     apiKey,
     body: { content, isFullTranslation, filenames, partialConfig: parsedConfig },
     errorContext: 'Failed to request translation',
-  });
+  })
 
-  const translationContent = await pollForTranslation(data.translationId, apiKey);
-  return { translationId: data.translationId, content: translationContent };
+  const translationContent = await pollForTranslation(data.translationId, apiKey)
+  return { translationId: data.translationId, content: translationContent }
 }
 
 /**
@@ -93,34 +93,34 @@ export async function translate(
  * @throws {Error} If the translation is cancelled, the language is unsupported, polling times out, or the request fails.
  */
 export async function translateString(
-  content: string, 
+  content: string,
   lang: string,
   apiKey: string,
   partialConfig: PartialConfiguration = {}
 ): Promise<string | undefined> {
-  const parsedConfig = await parsePartialConfig(partialConfig);
+  const parsedConfig = await parsePartialConfig(partialConfig)
 
   const supportedLanguages = await apiRequest<string[]>('/api/translation/supported-languages', {
     errorContext: 'Failed to get supported languages',
-  });
+  })
 
   if (!supportedLanguages.includes(lang)) {
-    throw new Error(`Language '${lang}' is not supported. Supported languages are: ${supportedLanguages.join(', ')}`);
+    throw new Error(`Language '${lang}' is not supported. Supported languages are: ${supportedLanguages.join(', ')}`)
   }
 
   const data = await apiRequest<RequestTranslationResponse>('/api/translation/request-translation-string', {
     apiKey,
     body: { content, lang, partialConfig: parsedConfig },
     errorContext: 'Failed to request translation string',
-  });
+  })
 
-  const translationContent = await pollForTranslation(data.translationId, apiKey);
-  const translatedContent = translationContent[0]?.files[0]?.content;
+  const translationContent = await pollForTranslation(data.translationId, apiKey)
+  const translatedContent = translationContent[0]?.files[0]?.content
   if (translatedContent) {
-    const parsedContent = JSON.parse(translatedContent as string);
-    return Object.values(parsedContent)[0] as string;
+    const parsedContent = JSON.parse(translatedContent as string)
+    return Object.values(parsedContent)[0] as string
   }
-  return undefined;
+  return undefined
 }
 
 /**
@@ -135,8 +135,8 @@ export async function getTranslationStatus(translationId: number, apiKey: string
     apiKey,
     body: { translationId },
     errorContext: 'Failed to get translation status',
-  });
-  return data.status;
+  })
+  return data.status
 }
 
 /**
@@ -153,7 +153,7 @@ export async function getTranslationContent(translationId: number, apiKey: strin
     apiKey,
     body: { translationId },
     errorContext: 'Failed to get translation content',
-  });
+  })
 }
 
 /**
@@ -169,7 +169,7 @@ export async function getTextMap(apiKey: string): Promise<{ content: FlatJSON[] 
   return apiRequest<{ content: FlatJSON[] } | null>('/api/project/request-text-map', {
     apiKey,
     errorContext: 'Failed to fetch project text map',
-  });
+  })
 }
 
 /**
@@ -181,7 +181,7 @@ export async function getTextMap(apiKey: string): Promise<{ content: FlatJSON[] 
 export async function getSupportedLanguages(): Promise<string[]> {
   return apiRequest<string[]>('/api/translation/supported-languages', {
     errorContext: 'Failed to get supported languages',
-  });
+  })
 }
 
 /**
@@ -193,7 +193,7 @@ export async function getSupportedLanguages(): Promise<string[]> {
 export async function getSupportedFileTypes(): Promise<string[]> {
   return apiRequest<string[]>('/api/translation/supported-file-types', {
     errorContext: 'Failed to get supported file types',
-  });
+  })
 }
 
 /**
@@ -210,6 +210,5 @@ export async function upload(files: FileContentWithLanguage[], apiKey: string): 
     apiKey,
     body: { files },
     errorContext: 'Failed to upload files',
-  });
+  })
 }
-

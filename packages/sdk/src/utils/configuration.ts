@@ -1,5 +1,5 @@
-import { Configuration } from '@frenglish/utils';
-import { apiRequest } from './api';
+import { Configuration } from '@frenglish/utils'
+import { apiRequest } from './api'
 
 /**
  * Retrieves the default translation configuration for the current project.
@@ -15,7 +15,7 @@ export async function getDefaultConfiguration(apiKey: string): Promise<Configura
   return apiRequest<Configuration>('/api/configuration/get-default-configuration', {
     apiKey,
     errorContext: 'Failed to get default configuration',
-  });
+  })
 }
 
 /**
@@ -30,5 +30,5 @@ export async function getProjectSupportedLanguages(apiKey: string): Promise<{ la
   return apiRequest<{ languages: string[]; originLanguage: string }>('/api/configuration/get-project-supported-languages', {
     apiKey,
     errorContext: 'Failed to get project supported languages',
-  });
+  })
 }

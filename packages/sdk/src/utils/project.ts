@@ -1,4 +1,4 @@
-import { apiRequest } from "./api";
+import { apiRequest } from "./api"
 
 /**
  * Retrieves the public API key associated with a project based on its domain; this is for website integration only.
@@ -12,7 +12,7 @@ export async function getPublicAPIKeyFromDomain(apiKey: string, domain: string):
     apiKey,
     body: { domainURL: domain },
     errorContext: 'Failed to get public API key from domain',
-  });
+  })
 }
 
 /**
@@ -25,5 +25,5 @@ export async function getProjectDomain(apiKey: string): Promise<string> {
   return apiRequest<string>('/api/project/get-domain-url', {
     apiKey,
     errorContext: 'Failed to get project domain',
-  });
+  })
 }

@@ -6,12 +6,12 @@
  * Provides a command-line interface for translating and uploading localization files
  * using the Frenglish SDK.
  */
-import yargs from 'yargs';
-import { hideBin } from 'yargs/helpers';
-import fs from 'fs';
-import { PartialConfiguration } from '@frenglish/utils';
-import { translate } from './utils/translate';
-import { upload } from './utils/upload';
+import yargs from 'yargs'
+import { hideBin } from 'yargs/helpers'
+import fs from 'fs'
+import { PartialConfiguration } from '@frenglish/utils'
+import { translate } from './utils/translate'
+import { upload } from './utils/upload'
 
 yargs(hideBin(process.argv))
   .usage('Usage: $0 <command> [options]')
@@ -34,24 +34,24 @@ yargs(hideBin(process.argv))
           type: 'string',
           description: 'Partial configuration as a JSON string or file path',
           coerce: (arg: string) => {
-            if (!arg) return undefined;
+            if (!arg) return undefined
 
             try {
-              return JSON.parse(arg);
+              return JSON.parse(arg)
             } catch {
               try {
-                const content = fs.readFileSync(arg, 'utf8');
-                return JSON.parse(content);
+                const content = fs.readFileSync(arg, 'utf8')
+                return JSON.parse(content)
               } catch {
                 throw new Error(
                   `Failed to parse partialConfig: ${arg}. Must be valid JSON or a path to a JSON file.`
-                );
+                )
               }
             }
           },
         }),
     handler: (argv) => {
-      translate(argv.path, argv.isFullTranslation, argv.partialConfig as PartialConfiguration);
+      translate(argv.path, argv.isFullTranslation, argv.partialConfig as PartialConfiguration)
     },
   })
   .command(
@@ -64,7 +64,7 @@ yargs(hideBin(process.argv))
         default: process.env.TRANSLATION_PATH,
       }),
     (argv) => {
-      upload(argv.path as string);
+      upload(argv.path as string)
     }
   )
   .demandCommand(1, 'You need at least one command before moving on')
@@ -81,4 +81,4 @@ yargs(hideBin(process.argv))
   .example('$0 translate --partialConfig="./src/configs/translationConfig.json"', 'Translate files using configuration from a JSON file')
   .epilog('For more information, visit https://www.frenglish.ai')
   .wrap(yargs.terminalWidth())
-  .parse();
+  .parse()

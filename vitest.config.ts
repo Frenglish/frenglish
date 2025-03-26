@@ -15,7 +15,7 @@ export default defineConfig({
     testTimeout: 30000, // 30s per test max
     include: [path.resolve(__dirname, 'tests/**/*.test.ts')],
     setupFiles: ['./tests/vitest.setup.ts'],
-    pool: 'forks', // Needed to prevent SQLite3 from crashing 
+    pool: 'forks', // Needed to prevent SQLite3 from crashing
     restoreMocks: true, // Undo the mocks after each test
     sequence: {
       // Set to TRUE for more robust testing
@@ -25,7 +25,7 @@ export default defineConfig({
     env: {
       // Explicitly load .env file
       ...loadEnv('', process.cwd(), ''),
-      ...dotenv.config({ 
+      ...dotenv.config({
         path: path.resolve(__dirname, '.env')
       }).parsed
     },
