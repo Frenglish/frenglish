@@ -101,7 +101,6 @@ export async function translateString(
   const parsedConfig = await parsePartialConfig(partialConfig);
 
   const supportedLanguages = await apiRequest<string[]>('/api/translation/supported-languages', {
-    apiKey,
     errorContext: 'Failed to get supported languages',
   });
 
@@ -179,9 +178,8 @@ export async function getTextMap(apiKey: string): Promise<{ content: FlatJSON[] 
  * @returns {Promise<string[]>} A promise that resolves to an array of supported language codes (e.g. ['en', 'fr', 'es'])
  * @throws If the request fails or the API responds with an error.
  */
-export async function getSupportedLanguages(apiKey: string): Promise<string[]> {
+export async function getSupportedLanguages(): Promise<string[]> {
   return apiRequest<string[]>('/api/translation/supported-languages', {
-    apiKey,
     errorContext: 'Failed to get supported languages',
   });
 }
@@ -192,9 +190,8 @@ export async function getSupportedLanguages(apiKey: string): Promise<string[]> {
  * @returns {Promise<string[]>} A promise that resolves to an array of supported file extensions (e.g. ['.txt', '.json', '.md'])
  * @throws If the request fails or the API responds with an error.
  */
-export async function getSupportedFileTypes(apiKey: string): Promise<string[]> {
+export async function getSupportedFileTypes(): Promise<string[]> {
   return apiRequest<string[]>('/api/translation/supported-file-types', {
-    apiKey,
     errorContext: 'Failed to get supported file types',
   });
 }

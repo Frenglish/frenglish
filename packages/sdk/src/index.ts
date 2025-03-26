@@ -161,7 +161,7 @@ export const FrenglishSDK = (apiKey: string) => {
      * @throws {Error} If file type information retrieval fails
      */
     getSupportedFileTypes: async (): Promise<string[]> => {
-      return getSupportedFileTypesUtil(apiKey);
+      return getSupportedFileTypesUtil();
     },
 
     /**
@@ -171,7 +171,7 @@ export const FrenglishSDK = (apiKey: string) => {
      * @throws {Error} If supported languages retrieval fails
      */
     getSupportedLanguages: async (): Promise<string[]> => {
-      return getSupportedLanguagesUtil(apiKey);
+      return getSupportedLanguagesUtil();
     },
 
     /**
