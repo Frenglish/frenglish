@@ -6,14 +6,15 @@
 
 import * as fs from 'fs/promises'
 import * as path from 'path'
-import dotenv from 'dotenv'
 import { FrenglishSDK } from '@frenglish/sdk'
 import { findLanguageFilesToTranslate, getRelativePath, readFiles } from '@frenglish/utils'
 import { PartialConfiguration } from '@frenglish/utils'
+import dotenv from 'dotenv'
+import { printFrenglishBanner } from './styling.js'
 
-dotenv.config()
+// Load environment variables from the project root
+dotenv.config({ path: path.join(process.cwd(), '.env') })
 
-const FRENGLISH_API_KEY = process.env.FRENGLISH_API_KEY
 const TRANSLATION_PATH = process.env.TRANSLATION_PATH!
 const EXCLUDED_TRANSLATION_PATH = process.env.EXCLUDED_TRANSLATION_PATH
   ? JSON.parse(process.env.EXCLUDED_TRANSLATION_PATH.replace(/'/g, '"'))
@@ -23,24 +24,27 @@ const TRANSLATION_OUTPUT_PATH = process.env.TRANSLATION_OUTPUT_PATH || TRANSLATI
 /**
  * Translates localization files in the specified directory using the Frenglish API.
  *
+ * @param apiKey - The Frenglish API key for authentication
  * @param customPath - Path to the files to translate.
  * @param isFullTranslation - Whether to perform a full translation or only changes.
  * @param partialConfig - Optional custom configuration to override project defaults.
  * @param excludePath - Optional list of paths to exclude from translation.
  */
 export async function translate(
+  apiKey: string,
   customPath: string = TRANSLATION_PATH,
   isFullTranslation: boolean = false,
   partialConfig: PartialConfiguration = {},
   excludePath: string[] = EXCLUDED_TRANSLATION_PATH
 ) {
   try {
-    if (!FRENGLISH_API_KEY) {
-      throw new Error('FRENGLISH_API_KEY environment variable is not set')
+    console.log('Starting translation process...')
+
+    if (!apiKey) {
+      throw new Error('API key is required')
     }
 
-    const frenglish = FrenglishSDK(FRENGLISH_API_KEY)
-
+    const frenglish = FrenglishSDK(apiKey)
     const originLanguage = (await frenglish.getDefaultConfiguration()).originLanguage
     const supportedFileTypes = await frenglish.getSupportedFileTypes()
     const supportedLanguages = await frenglish.getSupportedLanguages()
@@ -80,9 +84,7 @@ export async function translate(
 
     const contents = fileContents.map((file) => file.content)
 
-    console.log('Files to translate:', fileIDs)
-    console.log('Uploading files and creating translation...')
-    console.log('Is full translation:', isFullTranslation)
+    printFrenglishBanner('Frenglish.ai', '🌍 TRANSLATE - Localized. Simplified.', fileIDs);
 
     const translationResponse = await frenglish.translate(
       contents,

@@ -1,7 +1,5 @@
 // src/index.ts
-import { PartialConfiguration, Configuration, FlatJSON } from '@frenglish/utils'
-import { FileContentWithLanguage, TranslationResponse } from '@frenglish/utils'
-import { TranslationStatus } from '@frenglish/utils'
+import { PartialConfiguration, Configuration, FlatJSON, Project, FileContentWithLanguage, TranslationResponse, TranslationStatus } from '@frenglish/utils'
 import {
   translate as translateUtil,
   translateString as translateStringUtil,
@@ -11,12 +9,42 @@ import {
   getSupportedFileTypes as getSupportedFileTypesUtil,
   getSupportedLanguages as getSupportedLanguagesUtil,
   upload as uploadUtil
-} from './utils/translation'
+} from './utils/translation.js'
 import {
   getDefaultConfiguration as getDefaultConfigurationUtil,
   getProjectSupportedLanguages as getProjectSupportedLanguagesUtil,
-} from './utils/configuration'
-import { getProjectDomain as getProjectDomainUtil, getPublicAPIKeyFromDomain as getPublicAPIKeyFromDomainUtil } from './utils/project'
+} from './utils/configuration.js'
+import {
+  getProjectDomain as getProjectDomainUtil,
+  getPublicAPIKeyFromDomain as getPublicAPIKeyFromDomainUtil,
+  getUserProjects as getUserProjectsUtil,
+  createProject as createProjectUtil,
+  updateConfiguration as updateConfigurationUtil
+} from './utils/project.js'
+
+/**
+ * Gets all projects that the user has access to, including projects from all teams they are part of.
+ * This function requires an access token from the login flow, not an API key.
+ *
+ * @param accessToken - The JWT access token from the login flow
+ * @param auth0Id - The Auth0 ID of the user
+ * @returns {Promise<{projects: any[], teams: any[]}>} A promise that resolves to an object containing:
+ *   - projects: Array of all projects the user has access to
+ *   - teams: Array of all teams the user is part of
+ * @throws {Error} If the request fails or the API responds with an error.
+ */
+export const getUserProjects = getUserProjectsUtil;
+
+    /**
+     * Creates a new project.
+     *
+     * @param accessToken - The JWT access token from the login flow
+     * @param auth0Id - The Auth0 ID of the user
+     * @param teamID - The ID of the team to create the project in
+     * @returns {Promise<Project>} A promise that resolves to the created project
+     * @throws {Error} If the request fails or the API responds with an error.
+     */
+export const createProject = createProjectUtil;
 
 /**
  * Creates a Frenglish SDK instance for handling translations and configuration.
@@ -184,6 +212,21 @@ export const FrenglishSDK = (apiKey: string) => {
     upload: async (files: FileContentWithLanguage[]): Promise<{ message: string, originFilesInfo: Array<{ fileId: string, originS3Version: string }> }> => {
       return uploadUtil(files, apiKey)
     },
+
+    /**
+     * Updates the configuration for a project.
+     *
+     * @returns {Promise<Configuration>} A promise that resolves to the updated configuration
+     * @throws {Error} If the request fails or the API responds with an error.
+     */
+    updateConfiguration: async (partiallyUpdatedConfig: PartialConfiguration): Promise<Configuration> => {
+      return updateConfigurationUtil(apiKey, partiallyUpdatedConfig)
+    }
   }
 }
+
+// Export the type
 export type FrenglishSDK = ReturnType<typeof FrenglishSDK>;
+
+// Export a default function that creates the SDK
+export default FrenglishSDK;

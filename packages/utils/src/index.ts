@@ -1,14 +1,13 @@
 // src/index.ts
 
 // Export all types
-export * from './types/translation'
-export * from './types/configuration'
-export * from './types/file'
-export * from './types/IFrenglishSDK'
+export * from './types/translation.js'
+export * from './types/configuration.js'
+export * from './types/project.js'
+export * from './types/file.js'
+export * from './types/IFrenglishSDK.js'
 
 // Export all utils
-export * from './utils/config'
-export * from './utils/files'
-export * from './utils/utils'
-
-export const FRENGLISH_BACKEND_URL = process.env.FRENGLISH_BACKEND_URL || 'https://api.frenglish.com'
+export * from './utils/config.js'
+export * from './utils/files.js'
+export * from './utils/utils.js'

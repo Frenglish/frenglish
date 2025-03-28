@@ -2,8 +2,15 @@
     "name": "@frenglish/sdk",
     "version": "1.0.0",
     "description": "SDK for Frenglish translation service",
+    "type": "module",
     "main": "dist/index.js",
     "types": "dist/index.d.ts",
+    "exports": {
+        ".": {
+            "import": "./dist/index.js",
+            "types": "./dist/index.d.ts"
+        }
+    },
     "scripts": {
         "clean": "rm -rf dist",
         "build": "pnpm run clean && tsc",

@@ -1,16 +1,19 @@
-import { apiRequest } from "./api"
-
+import { apiRequest } from "./api.js"
+import { Configuration, PartialConfiguration, Project, ProjectResponse } from "@frenglish/utils"
 /**
  * Retrieves the public API key associated with a project based on its domain; this is for website integration only.
  *
+ * @param apiKey - The API key of the project
  * @param domain - The domain URL of the project.
  * @returns {Promise<string>} A promise that resolves to a public API key string (e.g. 'pk_live_123...')
  * @throws If the request fails or the domain is not associated with any project.
  */
 export async function getPublicAPIKeyFromDomain(apiKey: string, domain: string): Promise<string> {
   return apiRequest<string>('/api/project/get-public-api-key-from-domain', {
-    apiKey,
-    body: { domainURL: domain },
+    body: {
+      domainURL: domain,
+      apiKey,
+    },
     errorContext: 'Failed to get public API key from domain',
   })
 }
@@ -18,12 +21,74 @@ export async function getPublicAPIKeyFromDomain(apiKey: string, domain: string):
 /**
  * Retrieves the domain associated with the current Frenglish project; this is for website integration only.
  *
+ * @param apiKey - The API key of the project
  * @returns {Promise<string>} A promise that resolves to the project's domain URL (e.g. 'https://example.com')
  * @throws If the request fails or the API responds with an error.
  */
 export async function getProjectDomain(apiKey: string): Promise<string> {
   return apiRequest<string>('/api/project/get-domain-url', {
-    apiKey,
+    body: {
+      apiKey,
+    },
     errorContext: 'Failed to get project domain',
+  })
+}
+
+/**
+ * Retrieves all projects that the user has access to, including projects from all teams they are part of.
+ *
+ * @param accessToken - The JWT access token from the login flow
+ * @param auth0Id - The Auth0 ID of the user
+ * @returns {Promise<{projects: any[], teams: any[]}>} A promise that resolves to an object containing:
+ *   - projects: Array of all projects the user has access to
+ *   - teams: Array of all teams the user is part of
+ * @throws If the request fails or the API responds with an error.
+ */
+export async function getUserProjects(accessToken: string, auth0Id: string): Promise<{projects: any[], teams: any[]}> {
+  return apiRequest<{projects: any[], teams: any[]}>('/api/user/user-projects', {
+    accessToken,
+    body: {
+      auth0Id
+    },
+    errorContext: 'Failed to get user projects',
+  })
+}
+
+/**
+ * Creates a new project.
+ *
+ * @param accessToken - The JWT access token from the login flow
+ * @param auth0Id - The Auth0 ID of the user
+ * @param teamID - The ID of the team to create the project in
+ * @returns {Promise<ProjectResponse>} A promise that resolves to the created project
+ * @throws If the request fails or the API responds with an error.
+ */
+export async function createProject(accessToken: string, auth0Id: string, teamID: number): Promise<ProjectResponse> {
+  return apiRequest<ProjectResponse>('/api/project/create-project', {
+    accessToken,
+    body: {
+      teamID: teamID,
+      auth0Id: auth0Id,
+      projectType: "cli_sdk",
+    },
+    errorContext: 'Failed to create project',
+  })
+}
+
+/**
+ * Update configuration.
+ *
+ * @param apiKey - The API key of the project
+ * @param config - The configuration to update
+ * @returns {Promise<Configuration>} A promise that resolves to the updated configuration
+ * @throws If the request fails or the API responds with an error.
+ */
+export async function updateConfiguration(apiKey: string, config: PartialConfiguration): Promise<Configuration> {
+  return apiRequest<Configuration>('/api/configuration/update-translation-config', {
+    body: {
+      apiKey,
+      partiallyUpdatedConfig: config,
+    },
+    errorContext: 'Failed to update configuration',
   })
 }

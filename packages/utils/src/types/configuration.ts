@@ -14,6 +14,11 @@ export interface Configuration {
     createdAt: string | null;
     lastModifiedAt: string | null;
 }
+
+export interface ConfigurationResponse {
+    configuration: Configuration;
+}
+
 export type PartialConfiguration = Partial<Configuration>;
 
 export interface LanguageSelector {

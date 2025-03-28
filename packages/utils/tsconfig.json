@@ -17,6 +17,10 @@
       "@/*": ["src/*"]
     }
   },
-  "include": ["src/**/*", "src/utils/config.ts", "src/utils/files.ts", "src/utils/utils.ts"],
+  "ts-node": {
+    "esm": true,
+    "experimentalSpecifierResolution": "node"
+  },
+  "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]
 }

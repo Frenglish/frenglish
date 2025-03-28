@@ -1,5 +1,5 @@
 import { Configuration } from '@frenglish/utils'
-import { apiRequest } from './api'
+import { apiRequest } from './api.js'
 
 /**
  * Retrieves the default translation configuration for the current project.
@@ -13,7 +13,9 @@ import { apiRequest } from './api'
  */
 export async function getDefaultConfiguration(apiKey: string): Promise<Configuration> {
   return apiRequest<Configuration>('/api/configuration/get-default-configuration', {
-    apiKey,
+    body: {
+      apiKey,
+    },
     errorContext: 'Failed to get default configuration',
   })
 }
@@ -28,7 +30,9 @@ export async function getDefaultConfiguration(apiKey: string): Promise<Configura
  */
 export async function getProjectSupportedLanguages(apiKey: string): Promise<{ languages: string[]; originLanguage: string }> {
   return apiRequest<{ languages: string[]; originLanguage: string }>('/api/configuration/get-project-supported-languages', {
-    apiKey,
+    body: {
+      apiKey,
+    },
     errorContext: 'Failed to get project supported languages',
   })
 }

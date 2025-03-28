@@ -8,7 +8,7 @@ import {
   CompletedTranslationResponse,
   FlatJSON,
 } from '@frenglish/utils'
-import { apiRequest } from './api'
+import { apiRequest } from './api.js'
 
 /**
  * Internal helper function to poll for translation completion.
@@ -30,15 +30,19 @@ export const pollForTranslation = async (
 
   while (Date.now() - startTime < maxPollingTime) {
     const translationStatus = await apiRequest<{ status: TranslationStatus }>('/api/translation/get-status', {
-      apiKey,
-      body: { translationId },
+      body: {
+        translationId,
+        apiKey,
+      },
       errorContext: 'Failed to get translation status',
     }).then(data => data.status)
 
     if (translationStatus === TranslationStatus.COMPLETED) {
       return apiRequest<TranslationResponse[]>('/api/translation/get-translation', {
-        apiKey,
-        body: { translationId },
+        body: {
+          translationId,
+          apiKey,
+        },
         errorContext: 'Failed to get translation content',
       })
     } else if (translationStatus === TranslationStatus.CANCELLED) {
@@ -71,8 +75,13 @@ export async function translate(
   const parsedConfig = await parsePartialConfig(partialConfig)
 
   const data = await apiRequest<RequestTranslationResponse>('/api/translation/request-translation', {
-    apiKey,
-    body: { content, isFullTranslation, filenames, partialConfig: parsedConfig },
+    body: {
+      content,
+      isFullTranslation,
+      filenames,
+      partialConfig: parsedConfig,
+      apiKey,
+    },
     errorContext: 'Failed to request translation',
   })
 
@@ -109,8 +118,12 @@ export async function translateString(
   }
 
   const data = await apiRequest<RequestTranslationResponse>('/api/translation/request-translation-string', {
-    apiKey,
-    body: { content, lang, partialConfig: parsedConfig },
+    body: {
+      content,
+      lang,
+      partialConfig: parsedConfig,
+      apiKey,
+    },
     errorContext: 'Failed to request translation string',
   })
 
@@ -132,8 +145,10 @@ export async function translateString(
  */
 export async function getTranslationStatus(translationId: number, apiKey: string): Promise<TranslationStatus> {
   const data = await apiRequest<{ status: TranslationStatus }>('/api/translation/get-status', {
-    apiKey,
-    body: { translationId },
+    body: {
+      translationId,
+      apiKey,
+    },
     errorContext: 'Failed to get translation status',
   })
   return data.status
@@ -150,8 +165,10 @@ export async function getTranslationStatus(translationId: number, apiKey: string
  */
 export async function getTranslationContent(translationId: number, apiKey: string): Promise<TranslationResponse[]> {
   return apiRequest<TranslationResponse[]>('/api/translation/get-translation', {
-    apiKey,
-    body: { translationId },
+    body: {
+      translationId,
+      apiKey,
+    },
     errorContext: 'Failed to get translation content',
   })
 }
@@ -167,7 +184,9 @@ export async function getTranslationContent(translationId: number, apiKey: strin
  */
 export async function getTextMap(apiKey: string): Promise<{ content: FlatJSON[] } | null> {
   return apiRequest<{ content: FlatJSON[] } | null>('/api/project/request-text-map', {
-    apiKey,
+    body: {
+      apiKey,
+    },
     errorContext: 'Failed to fetch project text map',
   })
 }
@@ -207,8 +226,10 @@ export async function getSupportedFileTypes(): Promise<string[]> {
  */
 export async function upload(files: FileContentWithLanguage[], apiKey: string): Promise<{ message: string, originFilesInfo: Array<{ fileId: string, originS3Version: string }> }> {
   return apiRequest('/api/translation/upload-files', {
-    apiKey,
-    body: { files },
+    body: {
+      files,
+      apiKey,
+    },
     errorContext: 'Failed to upload files',
   })
 }

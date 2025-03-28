@@ -5,37 +5,43 @@ export async function apiRequest<T>(
   endpoint: string,
   options?: {
     apiKey?: string;
+    accessToken?: string;
     body?: any;
     errorContext?: string;
+    headers?: Record<string, string>;
   }
 ): Promise<T> {
-  const { apiKey, body, errorContext } = options || {}
+  const { apiKey, accessToken, body, errorContext, headers: customHeaders } = options || {}
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
+    ...customHeaders
   }
 
   if (apiKey) {
     headers['Authorization'] = `Bearer ${apiKey}`
-  }
-
-  // Remove apiKey from body if it exists
-  const requestBody = body ? { ...body } : undefined
-  if (requestBody && 'apiKey' in requestBody) {
-    delete requestBody.apiKey
+  } else if (accessToken) {
+    headers['Authorization'] = `Bearer ${accessToken}`
   }
 
   const response = await fetch(`${FRENGLISH_BACKEND_URL}${endpoint}`, {
     method: 'POST',
     headers,
-    body: requestBody ? JSON.stringify(requestBody) : undefined,
+    body: body ? JSON.stringify(body) : undefined,
   })
 
+  const responseText = await response.text()
+
   if (!response.ok) {
-    const errorText = await response.text()
     const prefix = errorContext ? `${errorContext}: ` : 'API Error: '
-    throw new Error(`${prefix}[${response.status}] ${errorText}`)
+    throw new Error(`${prefix}[${response.status}] ${responseText}`)
   }
 
-  return response.json()
+  try {
+    const parsedResponse = JSON.parse(responseText)
+    return parsedResponse as T
+  } catch (error) {
+    console.error("Failed to parse response:", error)
+    throw new Error(`Failed to parse response: ${responseText}`)
+  }
 }
