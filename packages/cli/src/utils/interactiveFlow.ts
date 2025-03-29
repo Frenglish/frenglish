@@ -117,11 +117,19 @@ export async function runGuidedTranslationFlow() {
         if (action === 'confirm') {
           isConfigConfirmed = true;
           await sdk.updateConfiguration({ ...config });
-          console.log(chalk.green('\n✨ Configuration updated successfully!\n'));
         } else {
           config = await modifyConfiguration(sdk, config);
         }
       }
+      console.log(chalk.green('\n✨ Configuration updated successfully!\n'));
+      console.log(chalk.gray(JSON.stringify(config, null, 2)));
+      // Save config locally
+      const localConfig = loadLocalConfig();
+      const configToSave = {
+            ...localConfig,
+            ...config,
+      };
+      saveLocalConfig(configToSave);
     }
   }
 
@@ -183,7 +191,6 @@ export async function runGuidedTranslationFlow() {
       if (action === 'confirm') {
         isConfigConfirmed = true;
         await sdk.updateConfiguration({ ...config });
-        console.log(chalk.green('\n✨ Configuration updated successfully!\n'));
       } else {
         config = await modifyConfiguration(sdk, config);
       }
@@ -191,16 +198,15 @@ export async function runGuidedTranslationFlow() {
     const updatedConfig = await sdk.updateConfiguration({ ...config });
     console.log(chalk.green('\n✨ Configuration updated successfully!\n'));
     console.log(chalk.gray(JSON.stringify(updatedConfig, null, 2)));
-  }
 
-  // Save config locally
-  const localConfig = loadLocalConfig();
-  const configToSave = {
-    ...localConfig,
-    ...config,
-    languages: config.languages || []
-  };
-  saveLocalConfig(configToSave);
+    // Save config locally
+    const localConfig = loadLocalConfig();
+    const configToSave = {
+        ...localConfig,
+        ...updatedConfig,
+    };
+    saveLocalConfig(configToSave);
+  }
 
   const { translateNow } = await inquirer.prompt([
     {
@@ -406,7 +412,7 @@ async function runTranslationWizard(config: any, selectedProject: Project) {
     const loadingChars = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
     let i = 0;
     const interval = setInterval(() => {
-      process.stdout.write(`\r${chalk.cyan(loadingChars[i])} Translating files...\n`);
+      process.stdout.write(`\r${chalk.cyan(loadingChars[i])} Translating files...`);
       i = (i + 1) % loadingChars.length;
     }, 100);
   

@@ -51,6 +51,8 @@ export async function translate(
     if (!originLanguage) {
       throw new Error('Origin language not found')
     }
+    // Ensure we set the project status to active to allow translations
+    await frenglish.setProjectActiveStatus(true)
 
     const languageFiles = await findLanguageFilesToTranslate(
       customPath,

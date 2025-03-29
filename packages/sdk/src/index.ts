@@ -19,7 +19,8 @@ import {
   getPublicAPIKeyFromDomain as getPublicAPIKeyFromDomainUtil,
   getUserProjects as getUserProjectsUtil,
   createProject as createProjectUtil,
-  updateConfiguration as updateConfigurationUtil
+  updateConfiguration as updateConfigurationUtil,
+  setProjectActiveStatus as setProjectActiveStatusUtil
 } from './utils/project.js'
 
 /**
@@ -221,6 +222,16 @@ export const FrenglishSDK = (apiKey: string) => {
      */
     updateConfiguration: async (partiallyUpdatedConfig: PartialConfiguration): Promise<Configuration> => {
       return updateConfigurationUtil(apiKey, partiallyUpdatedConfig)
+    },
+    /**
+     * Toggles the active status of a project.
+     *
+     * @param {boolean} isActive - The new active status of the project
+     * @returns {Promise<Project>} A promise that resolves to the updated project
+     * @throws {Error} If the request fails or the API responds with an error.
+     */
+    setProjectActiveStatus: async (isActive: boolean): Promise<Project> => {
+      return setProjectActiveStatusUtil(apiKey, isActive)
     }
   }
 }

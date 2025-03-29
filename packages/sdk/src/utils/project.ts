@@ -92,3 +92,21 @@ export async function updateConfiguration(apiKey: string, config: PartialConfigu
     errorContext: 'Failed to update configuration',
   })
 }
+
+/**
+ * Update project.
+ *
+ * @param apiKey - The API key of the project
+ * @param isActive - The new active status of the project
+ * @returns {Promise<Project>} A promise that resolves to the updated project
+ * @throws If the request fails or the API responds with an error.
+ */
+export async function setProjectActiveStatus(apiKey: string, isActive: boolean): Promise<Project> {
+  return apiRequest<Project>('/api/project/toggle-active', {
+    body: {
+      apiKey,
+      isActive,
+    },
+    errorContext: 'Failed to set active status',
+  })
+}
