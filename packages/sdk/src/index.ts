@@ -20,7 +20,8 @@ import {
   getUserProjects as getUserProjectsUtil,
   createProject as createProjectUtil,
   updateConfiguration as updateConfigurationUtil,
-  setProjectActiveStatus as setProjectActiveStatusUtil
+  setProjectActiveStatus as setProjectActiveStatusUtil,
+  getProjectInformation as getProjectInformationUtil
 } from './utils/project.js'
 
 /**
@@ -232,6 +233,16 @@ export const FrenglishSDK = (apiKey: string) => {
      */
     setProjectActiveStatus: async (isActive: boolean): Promise<Project> => {
       return setProjectActiveStatusUtil(apiKey, isActive)
+    },
+
+    /**
+     * Retrieves information about the current project.
+     *
+     * @returns {Promise<Project>} A promise that resolves to the current project
+     * @throws {Error} If the request fails or the API responds with an error.
+     */
+    getProjectInformation: async (): Promise<Project> => {
+      return getProjectInformationUtil(apiKey)
     }
   }
 }

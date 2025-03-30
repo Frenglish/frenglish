@@ -13,6 +13,8 @@ export interface Project {
     domainKeys?: string[]
     useSubdomains: boolean
     integrationType: string
+    includedUrlPaths?: string[]
+    excludedUrlPaths?: string[]
   } 
 
   export interface WordpressConfig {
