@@ -10,10 +10,15 @@ import { loadLocalConfig, saveLocalConfig } from './localFrenglishConfig.js';
 
 const TOKEN_PATH = path.join(os.homedir(), '.frenglish', 'config.json');
 
-function loadToken(): { accessToken: string; auth0Id: string; } | null {
+function loadToken(): { accessToken: string; auth0Id: string; email: string; name: string; } | null {
   try {
     const tokenData = JSON.parse(fs.readFileSync(TOKEN_PATH, 'utf-8'));
-    return { accessToken: tokenData.access_token as string, auth0Id: tokenData.auth0Id as string };
+    return { 
+      accessToken: tokenData.access_token as string, 
+      auth0Id: tokenData.auth0Id as string,
+      email: tokenData.email as string,
+      name: tokenData.name as string
+    };
   } catch {
     console.error(chalk.red('❌ Failed to load token. Please run `frenglish login` again.'));
     return null;
@@ -32,12 +37,12 @@ function validatePath(pathStr: string): boolean {
 export async function runGuidedTranslationFlow() {
   const tokenData = loadToken();
   if (!tokenData) return;
-  const { accessToken, auth0Id } = tokenData;
+  const { accessToken, auth0Id, email, name } = tokenData;
 
   // Fetch existing projects
-  console.log("accessToken", accessToken);
-  console.log("auth0Id", auth0Id);
-  const { projects } = await getUserProjects(accessToken, auth0Id);
+  console.log(chalk.cyan(`\n👋 Welcome ${name}!`));
+  
+  const { projects } = await getUserProjects(accessToken, auth0Id, email, name);
   console.log("projects", projects);
   const cliProjects = projects.filter((p: any) => p.integrationType === 'cli_sdk');
 
@@ -139,7 +144,7 @@ export async function runGuidedTranslationFlow() {
   if (isNewProject) {
     console.log(chalk.cyan('\n🚀 Creating New Project\n'));
 
-    const { teams } = await getUserProjects(accessToken, auth0Id);
+    const { teams } = await getUserProjects(accessToken, auth0Id, email, name);
     let teamID: number;
     if (teams.length === 1) {
       teamID = teams[0].id;

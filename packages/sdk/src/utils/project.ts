@@ -44,11 +44,13 @@ export async function getProjectDomain(apiKey: string): Promise<string> {
  *   - teams: Array of all teams the user is part of
  * @throws If the request fails or the API responds with an error.
  */
-export async function getUserProjects(accessToken: string, auth0Id: string): Promise<{projects: any[], teams: any[]}> {
+export async function getUserProjects(accessToken: string, auth0Id: string, email: string, name: string): Promise<{projects: any[], teams: any[]}> {
   return apiRequest<{projects: any[], teams: any[]}>('/api/user/user-projects', {
     accessToken,
     body: {
-      auth0Id
+      auth0Id,
+      email,
+      name,
     },
     errorContext: 'Failed to get user projects',
   })

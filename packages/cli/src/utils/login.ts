@@ -100,6 +100,15 @@ export async function login() {
       const payload = JSON.parse(Buffer.from(payloadB64, 'base64').toString());
       const auth0Id = payload.sub.split('|')[1];
 
+      // Extract email and name from ID token instead
+      const [, idTokenPayloadB64] = tokenData.id_token.split('.');
+      if (!idTokenPayloadB64) {
+        throw new Error('Invalid ID token format');
+      }
+      const idTokenPayload = JSON.parse(Buffer.from(idTokenPayloadB64, 'base64').toString());
+      const email = idTokenPayload.email;
+      const name = idTokenPayload.name;
+
       if (!auth0Id) {
         throw new Error('No auth0Id found in token payload');
       }
@@ -108,10 +117,12 @@ export async function login() {
         fs.mkdirSync(path.dirname(TOKEN_PATH), { recursive: true });
       }
 
-      // Save both token and auth0Id
+      // Save token, auth0Id, email, and name
       fs.writeFileSync(TOKEN_PATH, JSON.stringify({
         ...tokenData,
-        auth0Id
+        auth0Id,
+        email,
+        name
       }, null, 2));
       res.end('Login successful! You can close this window.');
       console.log(chalk.green('✅ Logged in successfully. Token saved.'));

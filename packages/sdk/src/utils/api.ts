@@ -23,7 +23,6 @@ export async function apiRequest<T>(
   } else if (accessToken) {
     headers['Authorization'] = `Bearer ${accessToken}`
   }
-  console.log("FRENGLISH_BACKEND_URL", FRENGLISH_BACKEND_URL)
 
   const response = await fetch(`${FRENGLISH_BACKEND_URL}${endpoint}`, {
     method: 'POST',

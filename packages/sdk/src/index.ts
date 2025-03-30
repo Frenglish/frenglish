@@ -30,6 +30,8 @@ import {
  *
  * @param accessToken - The JWT access token from the login flow
  * @param auth0Id - The Auth0 ID of the user
+ * @param email - The email of the user
+ * @param name - The name of the user
  * @returns {Promise<{projects: any[], teams: any[]}>} A promise that resolves to an object containing:
  *   - projects: Array of all projects the user has access to
  *   - teams: Array of all teams the user is part of
