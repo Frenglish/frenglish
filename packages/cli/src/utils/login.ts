@@ -116,6 +116,9 @@ export async function login() {
       res.end('Login successful! You can close this window.');
       console.log(chalk.green('✅ Logged in successfully. Token saved.'));
 
+      // Close the server before starting the guided flow
+      server.close();
+
       const { guided } = await inquirer.prompt([
         {
           type: 'confirm',
@@ -135,7 +138,10 @@ export async function login() {
       console.error('Failed to exchange code for token:', err);
       res.end('Login failed');
     } finally {
-      server.close();
+      // Only close the server if it hasn't been closed yet
+      if (server.listening) {
+        server.close();
+      }
     }
   });
 

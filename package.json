@@ -3,14 +3,13 @@
     "private": true,
     "packageManager": "pnpm@8.15.4",
     "workspaces": [
-      "packages/cli",
-      "packages/sdk",
-      "packages/utils"
+        "packages/cli",
+        "packages/sdk",
+        "packages/utils"
     ],
     "scripts": {
-      "build": "pnpm -r --filter @frenglish/... build",
-      "test": "pnpm -r --filter @frenglish/... test",
-      "clean": "pnpm -r run clean"
+        "build": "pnpm --filter '@frenglish/*' build",
+        "test": "pnpm --filter '@frenglish/*' test",
+        "lint": "eslint . --ext .ts,.tsx"
     }
-  }
-  
+}

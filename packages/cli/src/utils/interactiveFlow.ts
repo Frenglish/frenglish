@@ -35,7 +35,10 @@ export async function runGuidedTranslationFlow() {
   const { accessToken, auth0Id } = tokenData;
 
   // Fetch existing projects
+  console.log("accessToken", accessToken);
+  console.log("auth0Id", auth0Id);
   const { projects } = await getUserProjects(accessToken, auth0Id);
+  console.log("projects", projects);
   const cliProjects = projects.filter((p: any) => p.integrationType === 'cli_sdk');
 
   let config: PartialConfiguration = {};
