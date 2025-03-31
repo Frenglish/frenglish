@@ -9,6 +9,7 @@ import chalk from 'chalk';
 import inquirer from 'inquirer';
 import yargs from 'yargs';
 import { runGuidedTranslationFlow } from './interactiveFlow.js';
+import { FRENGLISH_BACKEND_URL } from '@frenglish/utils';
 
 const AUTH0_DOMAIN = 'dev-xvqfys11p21lwlfg.us.auth0.com';
 const CLIENT_ID = 'gmLjaSy45MYeq6upHs54ArjRKB32zFzH';
@@ -34,7 +35,7 @@ interface TokenData {
 export async function login() {
   const codeVerifier = base64URLEncode(crypto.randomBytes(32));
   const codeChallenge = base64URLEncode(sha256(Buffer.from(codeVerifier)));
-  const audience = `https://api.frenglish.ai/`;
+  const audience = (FRENGLISH_BACKEND_URL === 'https://api.frenglish.ai') ? `https://api.frenglish.ai/` : `https://${AUTH0_DOMAIN}/api/v2/`;
 
   // Add audience and scope parameters to the authorization URL
   const authUrl = `https://${AUTH0_DOMAIN}/authorize?` + new URLSearchParams({
