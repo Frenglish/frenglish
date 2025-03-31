@@ -254,7 +254,7 @@ export async function runGuidedTranslationFlow() {
     console.log(chalk.blue('   • frenglish config push\n'));
   } catch (error) {
     if (error instanceof Error && error.message.includes('User force closed')) {
-      console.log(chalk.yellow('\n\n👋 Exiting Frenglish CLI...'));
+      console.log(chalk.yellow('\n\n👋 Exiting Frenglish CLI... Have a great day!'));
       process.exit(0);
     }
     // Re-throw other errors
@@ -350,7 +350,7 @@ async function runProjectConfigWizard(sdk: FrenglishSDK) {
     return config;
   } catch (error) {
     if (error instanceof Error && error.message.includes('User force closed')) {
-      console.log(chalk.yellow('\n\n👋 Exiting Frenglish CLI...'));
+      console.log(chalk.yellow('\n\n👋 Exiting Frenglish CLI... Have a great day!'));
       process.exit(0);
     }
     throw error;
@@ -539,7 +539,7 @@ async function runTranslationWizard(config: any, selectedProject: Project) {
     }
   } catch (error) {
     if (error instanceof Error && error.message.includes('User force closed')) {
-      console.log(chalk.yellow('\n\n👋 Exiting Frenglish CLI...'));
+      console.log(chalk.yellow('\n\n👋 Exiting Frenglish CLI... Have a great day!'));
       process.exit(0);
     }
     throw error;
