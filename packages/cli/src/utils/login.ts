@@ -34,6 +34,7 @@ interface TokenData {
 export async function login() {
   const codeVerifier = base64URLEncode(crypto.randomBytes(32));
   const codeChallenge = base64URLEncode(sha256(Buffer.from(codeVerifier)));
+  const audience = `https://api.frenglish.ai/`;
 
   // Add audience and scope parameters to the authorization URL
   const authUrl = `https://${AUTH0_DOMAIN}/authorize?` + new URLSearchParams({
@@ -41,7 +42,7 @@ export async function login() {
     client_id: CLIENT_ID,
     redirect_uri: REDIRECT_URI,
     scope: 'openid profile email',
-    audience: `https://${AUTH0_DOMAIN}/api/v2/`, // Add your API audience here
+    audience,
     code_challenge: codeChallenge,
     code_challenge_method: 'S256'
   }).toString();
@@ -70,7 +71,7 @@ export async function login() {
           code_verifier: codeVerifier,
           code,
           redirect_uri: REDIRECT_URI,
-          audience: `https://${AUTH0_DOMAIN}/api/v2/`, // Add your API audience here
+          audience
         }),
       });
 
