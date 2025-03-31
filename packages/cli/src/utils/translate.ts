@@ -11,15 +11,21 @@ import { findLanguageFilesToTranslate, getRelativePath, readFiles } from '@freng
 import { PartialConfiguration } from '@frenglish/utils'
 import dotenv from 'dotenv'
 import { printFrenglishBanner } from './styling.js'
+import { loadLocalConfig } from './localFrenglishConfig.js'
 
 // Load environment variables from the project root
 dotenv.config({ path: path.join(process.cwd(), '.env') })
 
-const TRANSLATION_PATH = process.env.TRANSLATION_PATH!
-const EXCLUDED_TRANSLATION_PATH = process.env.EXCLUDED_TRANSLATION_PATH
-  ? JSON.parse(process.env.EXCLUDED_TRANSLATION_PATH.replace(/'/g, '"'))
-  : []
-const TRANSLATION_OUTPUT_PATH = process.env.TRANSLATION_OUTPUT_PATH || TRANSLATION_PATH
+// Load local config first, then fall back to environment variables
+const localConfig = loadLocalConfig()
+const TRANSLATION_PATH = localConfig.translationPath || process.env.TRANSLATION_PATH!
+const EXCLUDED_TRANSLATION_PATH = localConfig.excludedTranslationPath || 
+  (process.env.EXCLUDED_TRANSLATION_PATH
+    ? JSON.parse(process.env.EXCLUDED_TRANSLATION_PATH.replace(/'/g, '"'))
+    : [])
+const TRANSLATION_OUTPUT_PATH = localConfig.translationOutputPath || 
+  process.env.TRANSLATION_OUTPUT_PATH || 
+  TRANSLATION_PATH
 
 /**
  * Translates localization files in the specified directory using the Frenglish API.

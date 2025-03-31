@@ -132,3 +132,39 @@ export async function getProjectInformation(apiKey: string): Promise<Project> {
     errorContext: 'Failed to get project information',
   })
 }
+
+/**
+ * Updates the name of the current project.
+ *
+ * @param apiKey - The API key of the project
+ * @param updatedProjectName - The updated project name
+ * @returns {Promise<Project>} A promise that resolves to the updated project
+ * @throws If the request fails or the API responds with an error.
+ */
+export async function updateProjectName(apiKey: string, updatedProjectName: string): Promise<Project> {
+  return apiRequest<Project>('/api/project/rename', {
+    body: {
+      apiKey,
+      projectName: updatedProjectName,
+    },
+    errorContext: 'Failed to update project name',
+  })
+}
+
+/**
+ * Toggles the test mode of a project.
+ *
+ * @param apiKey - The API key of the project
+ * @param isTestMode - The new test mode status of the project
+ * @returns {Promise<Project>} A promise that resolves to the updated project
+ * @throws If the request fails or the API responds with an error.
+ */
+export async function setTestMode(apiKey: string, isTestMode: boolean): Promise<Project> {
+  return apiRequest<Project>('/api/project/toggle-test-mode', {
+    body: {
+      apiKey,
+      isTestMode,
+    },
+    errorContext: 'Failed to set test mode',
+  })
+}

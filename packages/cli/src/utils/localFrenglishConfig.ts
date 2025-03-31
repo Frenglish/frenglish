@@ -2,7 +2,7 @@ import fs from 'fs';
 import chalk from 'chalk';
 import path from 'path';
 
-const CONFIG_PATH = path.join(process.cwd(), '.frenglish', 'config.json');
+const CONFIG_PATH = path.join(process.cwd(), 'frenglish.config.json');
 
 export function loadLocalConfig(): any {
     try {

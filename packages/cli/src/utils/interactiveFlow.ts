@@ -10,6 +10,10 @@ import { loadLocalConfig, saveLocalConfig } from './localFrenglishConfig.js';
 
 const TOKEN_PATH = path.join(os.homedir(), '.frenglish', 'config.json');
 
+interface ExtendedConfiguration extends PartialConfiguration {
+  projectName?: string;
+}
+
 function loadToken(): { accessToken: string; auth0Id: string; email: string; name: string; } | null {
   try {
     const tokenData = JSON.parse(fs.readFileSync(TOKEN_PATH, 'utf-8'));
@@ -34,75 +38,156 @@ function validatePath(pathStr: string): boolean {
   }
 }
 
-export async function runGuidedTranslationFlow() {
-  const tokenData = loadToken();
-  if (!tokenData) return;
-  const { accessToken, auth0Id, email, name } = tokenData;
+async function selectTeam(teams: any[]): Promise<number> {
+  if (teams.length === 1) {
+    return teams[0].id;
+  }
 
-  // Fetch existing projects
-  console.log(chalk.cyan(`\n👋 Welcome ${name}!`));
+  console.log(chalk.cyan('\n👥 Select the team you want to use:\n'));
+  teams.forEach((team, index) => {
+    console.log(chalk.gray(`${index + 1}. ${team.name}`));
+  });
   
-  const { projects } = await getUserProjects(accessToken, auth0Id, email, name);
-  const cliProjects = projects.filter((p: any) => p.integrationType === 'cli_sdk');
+  const { team: teamSelection } = await inquirer.prompt([
+    {
+      type: 'list',
+      name: 'team',
+      message: chalk.yellow('Select a team:'),
+      choices: teams.map((team, index) => ({
+        name: `${chalk.blue(team.name)} ${chalk.gray(`(ID: ${team.id})`)}`,
+        value: index + 1
+      }))
+    }
+  ]);
 
-  let config: PartialConfiguration = {};
-  let selectedTranslationProject: Project | null = null;
-  let isNewProject = true;
+  return teams[teamSelection - 1].id;
+}
 
-  if (cliProjects.length > 0) {
-    console.log(chalk.cyan('\n📦 Found existing CLI SDK projects\n'));
-    const { useExisting } = await inquirer.prompt([
-      {
-        type: 'list',
-        name: 'useExisting',
-        message: chalk.yellow('What would you like to do?'),
-        choices: [
-          { name: '✨ Create a new project', value: false },
-          { name: '📂 Use an existing project', value: true },
-        ],
-      },
-    ]);
+export async function runGuidedTranslationFlow() {
+  try {
+    const tokenData = loadToken();
+    if (!tokenData) return;
+    const { accessToken, auth0Id, email, name } = tokenData;
 
-    isNewProject = !useExisting;
+    // Fetch existing projects
+    console.log(chalk.cyan(`\n👋 Welcome ${name}!`));
+    
+    const { projects, teams } = await getUserProjects(accessToken, auth0Id, email, name);
+    const cliProjects = projects.filter((p: any) => p.integrationType === 'cli_sdk');
 
-    if (useExisting) {
-      console.log(chalk.cyan('\n📋 Available Projects:\n'));
-      const { selectedId } = await inquirer.prompt([
+    let config: ExtendedConfiguration = {};
+    let selectedTranslationProject: Project | null = null;
+    let isNewProject = true;
+
+    if (cliProjects.length > 0) {
+      console.log(chalk.cyan('\n📦 Found existing CLI SDK projects\n'));
+      const { useExisting } = await inquirer.prompt([
         {
           type: 'list',
-          name: 'selectedId',
-          message: chalk.yellow('Select a project:'),
-          choices: cliProjects.map((p: any) => ({
-            name: `${chalk.blue(p.name)} ${chalk.gray(`(ID: ${p.id})`)}`,
-            value: p.id,
-          })),
+          name: 'useExisting',
+          message: chalk.yellow('What would you like to do?'),
+          choices: [
+            { name: '✨ Create a new project', value: false },
+            { name: '📂 Use an existing project', value: true },
+          ],
         },
       ]);
 
-      const selectedProject = cliProjects.find((p: any) => p.id === selectedId);
-      selectedTranslationProject = selectedProject as Project;
-      const apiKey = selectedProject.privateApiKey;
+      isNewProject = !useExisting;
 
-      const sdk = FrenglishSDK(apiKey);
-      const defaultConfig = await sdk.getDefaultConfiguration();
+      if (useExisting) {
+        console.log(chalk.cyan('\n📋 Available Projects:\n'));
+        const { selectedId } = await inquirer.prompt([
+          {
+            type: 'list',
+            name: 'selectedId',
+            message: chalk.yellow('Select a project:'),
+            choices: cliProjects.map((p: any) => {
+              const team = teams.find(t => t.projectIds.includes(p.id));
+              const teamName = team ? team.name : '';
+              return {
+                name: `${chalk.blue(p.name)} ${chalk.gray(`(Team: ${teamName})`)} ${chalk.gray(`(ID: ${p.id})`)}`,
+                value: p.id,
+              };
+            }),
+          },
+        ]);
 
-      console.log(chalk.cyan('\n📄 Project Configuration:\n'));
-      console.log(chalk.gray(JSON.stringify(defaultConfig, null, 2)));
+        const selectedProject = cliProjects.find((p: any) => p.id === selectedId);
+        selectedTranslationProject = selectedProject as Project;
+        const apiKey = selectedProject.privateApiKey;
 
-      const { confirmConfig } = await inquirer.prompt([
-        {
-          type: 'confirm',
-          name: 'confirmConfig',
-          message: chalk.yellow('Use this configuration?'),
-          default: true,
-        },
-      ]);
+        const sdk = FrenglishSDK(apiKey);
+        const defaultConfig = await sdk.getDefaultConfiguration();
 
-      if (!confirmConfig) {
-        config = await modifyConfiguration(sdk, defaultConfig);
-      } else {
-        config = defaultConfig;
+        console.log(chalk.cyan('\n📄 Project Configuration:\n'));
+        console.log(chalk.gray(JSON.stringify(defaultConfig, null, 2)));
+
+        const { confirmConfig } = await inquirer.prompt([
+          {
+            type: 'confirm',
+            name: 'confirmConfig',
+            message: chalk.yellow('Use this configuration?'),
+            default: true,
+          },
+        ]);
+
+        if (!confirmConfig) {
+          config = await modifyConfiguration(sdk, defaultConfig);
+        } else {
+          config = defaultConfig;
+        }
+
+        let isConfigConfirmed = false;
+        while (!isConfigConfirmed) {
+          console.log(chalk.cyan('\n📋 Review Configuration:\n'));
+          console.log(chalk.gray(JSON.stringify(config, null, 2)));
+
+          const { action } = await inquirer.prompt([
+            {
+              type: 'list',
+              name: 'action',
+              message: chalk.yellow('What would you like to do?'),
+              choices: [
+                { name: '✅ Confirm and update web dashboard', value: 'confirm' },
+                { name: '⚙️  Modify configuration', value: 'modify' }
+              ]
+            }
+          ]);
+
+          if (action === 'confirm') {
+            isConfigConfirmed = true;
+            await sdk.updateConfiguration({ ...config });
+          } else {
+            config = await modifyConfiguration(sdk, config);
+          }
+        }
+        console.log(chalk.green('\n✨ Configuration updated successfully!\n'));
+        console.log(chalk.gray(JSON.stringify(config, null, 2)));
+        // Save config locally
+        const localConfig = loadLocalConfig();
+        const configToSave = {
+              ...localConfig,
+              ...config,
+        };
+        saveLocalConfig(configToSave);
       }
+    }
+
+    if (isNewProject) {
+      console.log(chalk.cyan('\n🚀 Creating New Project\n'));
+
+      const teamID = await selectTeam(teams);
+
+      const newProjectResponse = await createProject(accessToken, auth0Id, teamID);
+      const newProject = newProjectResponse.project;
+      selectedTranslationProject = newProject as Project;
+
+      console.log(chalk.green('\n✨ Project created successfully!'));
+      console.log(chalk.blue(`   Name: ${newProject.name}`));
+
+      const sdk = FrenglishSDK(newProject.privateApiKey);
+      config = await runProjectConfigWizard(sdk);
 
       let isConfigConfirmed = false;
       while (!isConfigConfirmed) {
@@ -124,128 +209,72 @@ export async function runGuidedTranslationFlow() {
         if (action === 'confirm') {
           isConfigConfirmed = true;
           await sdk.updateConfiguration({ ...config });
+          if (config.projectName) {
+            await sdk.updateProjectName(config.projectName);
+          }
         } else {
           config = await modifyConfiguration(sdk, config);
         }
       }
+      const updatedConfig = await sdk.updateConfiguration({ ...config });
+      if (config.projectName) {
+        await sdk.updateProjectName(config.projectName);
+      }
       console.log(chalk.green('\n✨ Configuration updated successfully!\n'));
-      console.log(chalk.gray(JSON.stringify(config, null, 2)));
+      console.log(chalk.gray(JSON.stringify(updatedConfig, null, 2)));
+
       // Save config locally
       const localConfig = loadLocalConfig();
       const configToSave = {
-            ...localConfig,
-            ...config,
+          ...localConfig,
+          ...updatedConfig,
       };
       saveLocalConfig(configToSave);
     }
-  }
 
-  if (isNewProject) {
-    console.log(chalk.cyan('\n🚀 Creating New Project\n'));
+    const { translateNow } = await inquirer.prompt([
+      {
+        type: 'confirm',
+        name: 'translateNow',
+        message: chalk.yellow('Would you like to generate translations now?'),
+        default: true,
+      },
+    ]);
 
-    const { teams } = await getUserProjects(accessToken, auth0Id, email, name);
-    let teamID: number;
-    if (teams.length === 1) {
-      teamID = teams[0].id;
-    } else {
-      console.log(chalk.cyan('\n👥 Select a team to create the project in:\n'));
-      teams.forEach((team, index) => {
-        console.log(chalk.gray(`${index + 1}. ${team.name}`));
-      });
-      
-      const { team: teamSelection } = await inquirer.prompt([
-        {
-          type: 'list',
-          name: 'team',
-          message: chalk.yellow('Select a team:'),
-          choices: teams.map((team, index) => ({
-            name: `${chalk.blue(team.name)} ${chalk.gray(`(ID: ${team.id})`)}`,
-            value: index + 1
-          }))
-        }
-      ]);
-
-      teamID = teams[teamSelection - 1].id;
-    }
-
-    const newProjectResponse = await createProject(accessToken, auth0Id, teamID);
-    const newProject = newProjectResponse.project;
-    selectedTranslationProject = newProject as Project;
-
-    console.log(chalk.green('\n✨ Project created successfully!'));
-    console.log(chalk.blue(`   Name: ${newProject.name}`));
-
-    const sdk = FrenglishSDK(newProject.privateApiKey);
-    config = await runProjectConfigWizard(sdk);
-
-    let isConfigConfirmed = false;
-    while (!isConfigConfirmed) {
-      console.log(chalk.cyan('\n📋 Review Configuration:\n'));
-      console.log(chalk.gray(JSON.stringify(config, null, 2)));
-
-      const { action } = await inquirer.prompt([
-        {
-          type: 'list',
-          name: 'action',
-          message: chalk.yellow('What would you like to do?'),
-          choices: [
-            { name: '✅ Confirm and update web dashboard', value: 'confirm' },
-            { name: '⚙️  Modify configuration', value: 'modify' }
-          ]
-        }
-      ]);
-
-      if (action === 'confirm') {
-        isConfigConfirmed = true;
-        await sdk.updateConfiguration({ ...config });
-      } else {
-        config = await modifyConfiguration(sdk, config);
+    if (translateNow) {
+      if (!selectedTranslationProject) {
+        throw new Error('No project selected');
       }
+      await runTranslationWizard(config, selectedTranslationProject);
     }
-    const updatedConfig = await sdk.updateConfiguration({ ...config });
-    console.log(chalk.green('\n✨ Configuration updated successfully!\n'));
-    console.log(chalk.gray(JSON.stringify(updatedConfig, null, 2)));
 
-    // Save config locally
-    const localConfig = loadLocalConfig();
-    const configToSave = {
-        ...localConfig,
-        ...updatedConfig,
-    };
-    saveLocalConfig(configToSave);
-  }
-
-  const { translateNow } = await inquirer.prompt([
-    {
-      type: 'confirm',
-      name: 'translateNow',
-      message: chalk.yellow('Would you like to generate translations now?'),
-      default: true,
-    },
-  ]);
-
-  if (translateNow) {
-    if (!selectedTranslationProject) {
-      throw new Error('No project selected');
+    console.log(chalk.cyan('\n🎉 Setup Complete! Available commands:\n'));
+    console.log(chalk.blue('   • frenglish translate'));
+    console.log(chalk.blue('   • frenglish upload'));
+    console.log(chalk.blue('   • frenglish config push\n'));
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('User force closed')) {
+      console.log(chalk.yellow('\n\n👋 Exiting Frenglish CLI...'));
+      process.exit(0);
     }
-    await runTranslationWizard(config, selectedTranslationProject);
+    // Re-throw other errors
+    throw error;
   }
-
-  console.log(chalk.cyan('\n🎉 Setup Complete! Available commands:\n'));
-  console.log(chalk.blue('   • frenglish translate'));
-  console.log(chalk.blue('   • frenglish upload'));
-  console.log(chalk.blue('   • frenglish config push\n'));
 }
 
 async function runProjectConfigWizard(sdk: FrenglishSDK) {
+  try {
     const languages = await sdk.getSupportedLanguages();    
-    // First get the basic project info
-    const basicConfig = await inquirer.prompt([
+    const project = await sdk.getProjectInformation();
+    const localConfig = loadLocalConfig();
+    
+    // First get the project name and languages
+    const initialConfig = await inquirer.prompt([
       {
         type: 'input',
         name: 'projectName',
         message: '[Required] Enter a name for your project:',
-        default: 'My Project',
+        default: project.name || 'My Project',
       },
       {
         type: 'list',
@@ -258,19 +287,23 @@ async function runProjectConfigWizard(sdk: FrenglishSDK) {
         name: 'languages',
         message: '[Required] Select target languages:',
         choices: languages.map(lang => ({ name: lang, value: lang })),
-      },
-      {
-        type: 'input',
-        name: 'TRANSLATION_PATH',
-        message: '[Required] Path to your source files:',
-        default: './src',
-      },
-      {
-        type: 'input',
-        name: 'TRANSLATION_OUTPUT_PATH',
-        message: '[Required] Where should translated files go?',
-        default: './i18n',
-      },
+      }
+    ]);
+
+    // Get translation path first
+    const TRANSLATION_PATH = await selectPath(
+      '[Required] Select or enter path to your source files:',
+      localConfig.TRANSLATION_PATH || './src'
+    );
+
+    // Then get output path, defaulting to translation path
+    const TRANSLATION_OUTPUT_PATH = await selectPath(
+      '[Required] Select or enter path where translated files should go:',
+      TRANSLATION_PATH || localConfig.TRANSLATION_OUTPUT_PATH || './i18n'
+    );
+
+    // Get remaining config options
+    const remainingConfig = await inquirer.prompt([
       {
         type: 'input',
         name: 'rules',
@@ -287,7 +320,7 @@ async function runProjectConfigWizard(sdk: FrenglishSDK) {
 
     // Then get language-specific rules for each selected target language
     const languageRules: Record<string, string> = {};
-    for (const lang of basicConfig.languages) {
+    for (const lang of initialConfig.languages) {
       const { rule } = await inquirer.prompt([
         {
           type: 'input',
@@ -299,10 +332,29 @@ async function runProjectConfigWizard(sdk: FrenglishSDK) {
       languageRules[lang] = rule;
     }
 
-    return {
-      ...basicConfig,
+    const config = {
+      ...initialConfig,
+      TRANSLATION_PATH,
+      TRANSLATION_OUTPUT_PATH,
+      ...remainingConfig,
       languageSpecificRules: languageRules
     };
+
+    // Save to local config
+    const updatedConfig = {
+      ...localConfig,
+      projectName: config.projectName
+    };
+    saveLocalConfig(updatedConfig);
+
+    return config;
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('User force closed')) {
+      console.log(chalk.yellow('\n\n👋 Exiting Frenglish CLI...'));
+      process.exit(0);
+    }
+    throw error;
+  }
 }
 
 function validateConfiguration(config: any): { isValid: boolean; missingFields: string[] } {
@@ -334,7 +386,9 @@ function validateConfiguration(config: any): { isValid: boolean; missingFields: 
 }
 
 async function runTranslationWizard(config: any, selectedProject: Project) {
+  try {
     const validation = validateConfiguration(config);
+    const sdk = FrenglishSDK(selectedProject.privateApiKey);
     
     if (!validation.isValid) {
       console.log(chalk.red('\n❌ Configuration validation failed. Missing required fields:'));
@@ -356,7 +410,7 @@ async function runTranslationWizard(config: any, selectedProject: Project) {
         const languages = await sdk.getSupportedLanguages();
         
         // Only prompt for missing fields
-        const missingFields = validation.missingFields.map(field => {
+        const missingFields = await Promise.all(validation.missingFields.map(async field => {
           switch (field) {
             case 'Origin Language':
               return {
@@ -372,29 +426,43 @@ async function runTranslationWizard(config: any, selectedProject: Project) {
                 message: '[Required] Select target languages:',
                 choices: languages.map(lang => ({ name: lang, value: lang })),
               };
-            case 'Translation Path':
+            case 'Translation Path': {
+              const translationPath = await selectPath(
+                '[Required] Select or enter path to your source files:',
+                './src'
+              );
               return {
                 type: 'input' as const,
                 name: 'TRANSLATION_PATH',
                 message: '[Required] Path to your source files:',
-                default: './src',
+                default: translationPath
               };
-            case 'Translation Output Path':
+            }
+            case 'Translation Output Path': {
+              const outputPath = await selectPath(
+                '[Required] Select or enter path where translated files should go:',
+                './i18n'
+              );
               return {
                 type: 'input' as const,
                 name: 'TRANSLATION_OUTPUT_PATH',
-                message: '[Required] Where should translated files go?',
-                default: './i18n',
+                message: '[Required] Where should translated files go:',
+                default: outputPath
               };
+            }
             default:
               return null;
           }
-        }).filter((q): q is NonNullable<typeof q> => q !== null);
+        }));
 
-        const missingConfig = await inquirer.prompt(missingFields);
+        const filteredFields = missingFields.filter((q): q is NonNullable<typeof q> => q !== null);
+        const missingConfig = await inquirer.prompt(filteredFields);
         config = { ...config, ...missingConfig };
         saveLocalConfig(config)
         await sdk.updateConfiguration({ ...config });
+        if (config.projectName) {
+          await sdk.updateProjectName(config.projectName);
+        }
       } else {
         throw new Error('❌ Configuration validation failed. Cancelled translation');
       }
@@ -414,6 +482,26 @@ async function runTranslationWizard(config: any, selectedProject: Project) {
         ],
       },
     ]);
+
+    const { useMockData } = await inquirer.prompt([
+      {
+        type: 'list',
+        name: 'useMockData',
+        message: chalk.yellow('Would you like to use mock data for testing?'),
+        choices: [
+          { name: '🎯 Generate real translations', value: false },
+          { name: '🧪 Use mock data for testing', value: true },
+        ],
+      },
+    ]);
+
+    if (useMockData) {
+      await sdk.setTestMode(true);
+      console.log(chalk.yellow('\n🧪 Test mode enabled - using mock data for translations\n'));
+    } else{
+      await sdk.setTestMode(false);
+      console.log(chalk.yellow('\n🎯 Test mode disabled - using real translations\n'));
+    }
   
     console.log(chalk.cyan('\n🚀 Starting translation process...\n'));
     const loadingChars = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
@@ -449,11 +537,33 @@ async function runTranslationWizard(config: any, selectedProject: Project) {
       console.error(chalk.red('❌ Translation failed'));
       console.error(chalk.red('   Error:'), err);
     }
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('User force closed')) {
+      console.log(chalk.yellow('\n\n👋 Exiting Frenglish CLI...'));
+      process.exit(0);
+    }
+    throw error;
+  }
 }
 
 async function modifyConfiguration(sdk: FrenglishSDK, config: any) {
   const languages = await sdk.getSupportedLanguages();
   const localConfig = loadLocalConfig();
+  const defaultConfig = await sdk.getDefaultConfiguration();
+  const project = await sdk.getProjectInformation();
+  
+  // Merge configs and ensure projectName is set
+  config = { 
+    ...defaultConfig, 
+    ...config, 
+    projectName: config.projectName || project.name 
+  };
+
+  // Save project name to local config if not already there
+  if (!localConfig.projectName) {
+    localConfig.projectName = project.name;
+    saveLocalConfig(localConfig);
+  }
 
   const { fieldToModify } = await inquirer.prompt([
     {
@@ -497,13 +607,19 @@ async function modifyConfiguration(sdk: FrenglishSDK, config: any) {
 
     config.languageSpecificRules[targetLang] = rule;
     await sdk.updateConfiguration({ ...config });
+    if (config.projectName) {
+      await sdk.updateProjectName(config.projectName);
+      // Update local config with new project name
+      localConfig.projectName = config.projectName;
+      saveLocalConfig(localConfig);
+    }
   } else {
     let promptConfig: any = {
       type: fieldToModify === 'languages' ? 'checkbox' : 
             fieldToModify === 'originLanguage' ? 'list' : 'input',
       name: 'value',
       message: chalk.yellow(`Enter value for ${chalk.blue(fieldToModify)}:`),
-      default: localConfig[fieldToModify] || config[fieldToModify]
+      default: config[fieldToModify] || localConfig[fieldToModify]
     };
 
     // Add choices only for language-related fields
@@ -545,6 +661,17 @@ async function modifyConfiguration(sdk: FrenglishSDK, config: any) {
         localConfig[fieldToModify] = [];
       }
     } else if (fieldToModify === 'TRANSLATION_PATH' || fieldToModify === 'TRANSLATION_OUTPUT_PATH') {
+      let defaultPath = config[fieldToModify] || localConfig[fieldToModify];
+      if (!defaultPath) {
+        const otherField = fieldToModify === 'TRANSLATION_PATH' ? 'TRANSLATION_OUTPUT_PATH' : 'TRANSLATION_PATH';
+        defaultPath = config[otherField] || localConfig[otherField] || './src';
+      }
+
+      const value = await selectPath(
+        `Select or enter value for ${chalk.blue(fieldToModify)}:`,
+        defaultPath
+      );
+
       if (!validatePath(value)) {
         console.log(chalk.yellow(`⚠️  Warning: The path "${value}" does not exist. Make sure to create it before running translations.`));
       }
@@ -556,7 +683,90 @@ async function modifyConfiguration(sdk: FrenglishSDK, config: any) {
     }
     
     await sdk.updateConfiguration({ ...config });
-    saveLocalConfig(localConfig);
+    // Update local config, ensuring projectName is included
+    const updatedConfig = { 
+      ...localConfig,
+      ...config,
+      projectName: config.projectName || project.name
+    };
+    saveLocalConfig(updatedConfig);
+    
+    if (config.projectName) {
+      await sdk.updateProjectName(config.projectName);
+    }
   }
   return config;
+}
+
+async function getDirectoryContents(basePath = './'): Promise<{ name: string; value: string; }[]> {
+  try {
+    const resolvedPath = path.resolve(process.cwd(), basePath);
+    const entries = await fs.promises.readdir(resolvedPath, { withFileTypes: true });
+    
+    const paths = [
+      { name: '📁 Enter custom path...', value: '__CUSTOM__' },
+      { name: '📂 ../ (Go up one level)', value: '../' }
+    ];
+
+    // Add directories first
+    const directories = entries
+      .filter(entry => entry.isDirectory())
+      .map(entry => ({
+        name: `📁 ${entry.name}/`,
+        value: path.join(basePath, entry.name, '/')
+      }));
+    
+    // Then add files
+    const files = entries
+      .filter(entry => entry.isFile())
+      .map(entry => ({
+        name: `📄 ${entry.name}`,
+        value: path.join(basePath, entry.name)
+      }));
+
+    return [...paths, ...directories, ...files];
+  } catch {
+    return [
+      { name: '📁 Enter custom path...', value: '__CUSTOM__' },
+      { name: '📂 ../ (Go up one level)', value: '../' }
+    ];
+  }
+}
+
+async function selectPath(message: string, defaultPath?: string): Promise<string> {
+  let currentPath = defaultPath || './';
+  
+  while (true) {
+    const choices = await getDirectoryContents(currentPath);
+    
+    const { selected } = await inquirer.prompt([{
+      type: 'list',
+      name: 'selected',
+      message: `${message}\nCurrent path: ${currentPath}`,
+      choices,
+      default: defaultPath
+    }]);
+
+    if (selected === '__CUSTOM__') {
+      const { customPath } = await inquirer.prompt([{
+        type: 'input',
+        name: 'customPath',
+        message: 'Enter custom path:',
+        default: currentPath
+      }]);
+      return customPath;
+    }
+
+    if (selected === '../') {
+      currentPath = path.join(currentPath, '../');
+      continue;
+    }
+
+    if (selected.endsWith('/')) {
+      currentPath = selected;
+      continue;
+    }
+
+    return selected;
+  }
 }

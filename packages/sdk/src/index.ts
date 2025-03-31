@@ -21,7 +21,9 @@ import {
   createProject as createProjectUtil,
   updateConfiguration as updateConfigurationUtil,
   setProjectActiveStatus as setProjectActiveStatusUtil,
-  getProjectInformation as getProjectInformationUtil
+  getProjectInformation as getProjectInformationUtil,
+  updateProjectName as updateProjectNameUtil,
+  setTestMode as setTestModeUtil
 } from './utils/project.js'
 
 /**
@@ -245,6 +247,28 @@ export const FrenglishSDK = (apiKey: string) => {
      */
     getProjectInformation: async (): Promise<Project> => {
       return getProjectInformationUtil(apiKey)
+    },
+
+    /**
+     * Updates the current project.
+     *
+     * @param {string} updatedProjectName - The updated project name
+     * @returns {Promise<Project>} A promise that resolves to the updated project
+     * @throws {Error} If the request fails or the API responds with an error.
+     */
+    updateProjectName: async (updatedProjectName: string): Promise<Project> => {
+      return updateProjectNameUtil(apiKey, updatedProjectName)
+    },
+
+    /**
+     * Toggles the test mode of a project.
+     *
+     * @param {boolean} isTestMode - The new test mode status of the project
+     * @returns {Promise<Project>} A promise that resolves to the updated project
+     * @throws {Error} If the request fails or the API responds with an error.
+     */
+    setTestMode: async (isTestMode: boolean): Promise<Project> => {
+      return setTestModeUtil(apiKey, isTestMode)
     }
   }
 }
