@@ -43,7 +43,6 @@ export async function runGuidedTranslationFlow() {
   console.log(chalk.cyan(`\n👋 Welcome ${name}!`));
   
   const { projects } = await getUserProjects(accessToken, auth0Id, email, name);
-  console.log("projects", projects);
   const cliProjects = projects.filter((p: any) => p.integrationType === 'cli_sdk');
 
   let config: PartialConfiguration = {};
