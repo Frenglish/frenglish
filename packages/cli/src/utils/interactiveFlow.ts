@@ -767,6 +767,16 @@ async function selectPath(message: string, defaultPath?: string): Promise<string
       continue;
     }
 
-    return selected;
+    // Add confirmation step for selected path
+    const { confirm } = await inquirer.prompt([{
+      type: 'confirm',
+      name: 'confirm',
+      message: `Selected path: ${selected}\nIs this the correct path?`,
+      default: true
+    }]);
+
+    if (confirm) {
+      return selected;
+    }
   }
 }
