@@ -3,14 +3,20 @@
     "version": "1.0.0",
     "description": "SDK for Frenglish translation service",
     "type": "module",
-    "main": "dist/index.js",
-    "types": "dist/index.d.ts",
+    "main": "./dist/index.js",
+    "module": "./dist/index.js",
+    "types": "./dist/index.d.ts",
     "exports": {
         ".": {
+            "types": "./dist/index.d.ts",
             "import": "./dist/index.js",
-            "types": "./dist/index.d.ts"
+            "require": "./dist/index.cjs"
         }
     },
+    "files": [
+        "dist",
+        "README.md"
+    ],
     "scripts": {
         "clean": "rm -rf dist",
         "build": "pnpm run clean && tsc",
@@ -43,7 +49,7 @@
         "vitest": "^3.0.4",
         "yargs": "^17.7.2"
     },
-    "files": [
-        "dist"
-    ]
+    "peerDependencies": {
+        "@frenglish/utils": "workspace:*"
+    }
 }
