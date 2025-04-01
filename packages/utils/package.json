@@ -1,6 +1,6 @@
 {
     "name": "@frenglish/utils",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "description": "Utils for Frenglish translation service",
     "type": "commonjs",
     "main": "dist/index.js",
@@ -26,13 +26,14 @@
     "license": "MIT",
     "devDependencies": {
         "@types/jest": "^27.0.0",
-        "@types/node": "^22.5.4",
         "@types/minimatch": "^5.1.2",
+        "@types/node": "^22.5.4",
         "jest": "^27.0.0",
         "ts-jest": "^27.0.0",
         "typescript": "^5.8.2"
     },
     "dependencies": {
+        "chalk": "^5.4.1",
         "dotenv": "^16.4.5",
         "glob": "^8.0.3",
         "glob-promise": "^6.0.7",
