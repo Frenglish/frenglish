@@ -92,7 +92,7 @@ importers:
     dependencies:
       '@frenglish/utils':
         specifier: ^1.0.0
-        version: link:../utils
+        version: 1.0.1
       dotenv:
         specifier: ^16.4.5
         version: 16.4.7
@@ -782,6 +782,16 @@ packages:
       '@eslint/core': 0.12.0
       levn: 0.4.1
     dev: true
+
+  /@frenglish/utils@1.0.1:
+    resolution: {integrity: sha512-3W2FfHIfxHvfZRFCfXGchAt4n+6/mKU7HqXAi9oN+9Z6zFMMAbMOxb6OBhaKypmIQezrI2P4CbCPHtM2lv1rvg==}
+    dependencies:
+      chalk: 5.4.1
+      dotenv: 16.4.7
+      glob: 8.0.3
+      glob-promise: 6.0.7(glob@8.0.3)
+      minimatch: 10.0.1
+    dev: false
 
   /@humanfs/core@0.19.1:
     resolution: {integrity: sha512-5DyQ4+1JEUzejeK1JGICcideyfUbGixgS9jNgex5nqkW+cY7WZhxBigmieN5Qnw9ZosSNVC9KQKyb+GUaGyKUA==}
