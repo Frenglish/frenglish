@@ -4,10 +4,9 @@
       "module": "commonjs",
       "target": "ES2020",
       "outDir": "./dist",
-      "rootDir": "./src",
       "moduleResolution": "node",
       "typeRoots": ["./node_modules/@types", "./types"],
-      "types": ["node", "express"],
+      "types": ["node"],
       "strict": true,
       "esModuleInterop": true,
       "skipLibCheck": true,
@@ -16,12 +15,11 @@
       "forceConsistentCasingInFileNames": true,
       "baseUrl": ".",
       "paths": {
-        "src/*": ["src/*"]
-      },
-      "experimentalDecorators": true,
-      "emitDecoratorMetadata": true
+        "src/*": ["packages/*"],
+        "utils/*": ["packages/utils/*"]
+      }
     },
-    "include": ["src/**/*", "tests"],
+    "include": ["packages/**/*", "tests", "packages/utils/config", "packages/utils/src/utils/files.ts", "packages/utils/src/types", "packages/utils/src/utils/config.ts", "packages/utils/src/utils/utils.ts"],
     "exclude": ["node_modules", "dist"]
   }
   

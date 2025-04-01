@@ -1,44 +1,22 @@
 {
-    "name": "frenglish",
-    "version": "1.12.1",
-    "description": "SDK for Frenglish translation service",
-    "main": "./dist/sdk/index.js",
-    "types": "./dist/sdk/index.d.ts",
-    "scripts": {
-        "clean": "rm -rf dist",
-        "build": "npm run clean && tsc",
-        "prepare": "npm run build",
-        "prepublishOnly": "npm run build",
-        "test:debug": "vitest --no-silent"
-    },
-    "keywords": [
-        "translation",
-        "sdk",
-        "frenglish"
+    "name": "frenglish-monorepo",
+    "private": true,
+    "packageManager": "pnpm@8.15.4",
+    "workspaces": [
+        "packages/cli",
+        "packages/sdk",
+        "packages/utils"
     ],
-    "bin": {
-        "frenglish": "./dist/cli/index.js"
+    "scripts": {
+        "build": "pnpm --filter '@frenglish/*' build",
+        "build:cli": "pnpm --filter '@frenglish/cli' build",
+        "clean": "pnpm -r run clean",
+        "lint": "eslint . --ext .ts,.tsx --fix",
+        "lint:all": "pnpm --filter '@frenglish/*' lint",
+        "publish-packages": "pnpm build && pnpm --filter '@frenglish/utils' publish --no-git-checks && pnpm --filter '@frenglish/sdk' publish --no-git-checks",
+        "test": "pnpm --filter '@frenglish/*' test"
     },
-    "author": "frenglish",
-    "license": "MIT",
     "devDependencies": {
-        "@types/express": "^4.17.21",
-        "@types/jest": "^27.0.0",
-        "@types/node": "^22.5.4",
-        "happy-dom": "^16.8.1",
-        "jest": "^27.0.0",
-        "ts-jest": "^27.0.0",
-        "typescript": "^4.5.0"
-    },
-    "dependencies": {
-        "dotenv": "^16.4.5",
-        "glob": "8.0.3",
-        "glob-promise": "^6.0.7",
-        "minimatch": "^10.0.1",
-        "vitest": "^3.0.4",
-        "yargs": "^17.7.2"
-    },
-    "files": [
-        "dist"
-    ]
+        "eslint": "^9.23.0"
+    }
 }

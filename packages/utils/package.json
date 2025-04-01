@@ -1,0 +1,47 @@
+{
+    "name": "@frenglish/utils",
+    "version": "1.0.0",
+    "description": "Utils for Frenglish translation service",
+    "type": "commonjs",
+    "main": "dist/index.js",
+    "types": "dist/index.d.ts",
+    "exports": {
+        ".": {
+            "import": "./dist/index.js",
+            "require": "./dist/index.js",
+            "types": "./dist/index.d.ts"
+        }
+    },
+    "scripts": {
+        "clean": "rm -rf dist",
+        "build": "pnpm run clean && tsc",
+        "prepare": "pnpm run build",
+        "test": "jest"
+    },
+    "keywords": [
+        "utils",
+        "frenglish"
+    ],
+    "author": "viv-cheung",
+    "license": "MIT",
+    "devDependencies": {
+        "@types/jest": "^27.0.0",
+        "@types/node": "^22.5.4",
+        "@types/minimatch": "^5.1.2",
+        "jest": "^27.0.0",
+        "ts-jest": "^27.0.0",
+        "typescript": "^5.8.2"
+    },
+    "dependencies": {
+        "dotenv": "^16.4.5",
+        "glob": "^8.0.3",
+        "glob-promise": "^6.0.7",
+        "minimatch": "^10.0.1"
+    },
+    "files": [
+        "dist"
+    ],
+    "publishConfig": {
+        "access": "public"
+    }
+}

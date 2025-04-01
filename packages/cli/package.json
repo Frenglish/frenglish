@@ -1,0 +1,63 @@
+{
+    "name": "@frenglish/cli",
+    "version": "1.0.0",
+    "description": "CLI for Frenglish translation service",
+    "main": "dist/index.js",
+    "type": "module",
+    "bin": {
+        "frenglish": "./dist/index.js"
+    },
+    "exports": {
+        ".": {
+            "import": "./dist/index.js",
+            "types": "./dist/index.d.ts"
+        },
+        "./utils/*": {
+            "import": "./dist/utils/*.js",
+            "types": "./dist/utils/*.d.ts"
+        }
+    },
+    "scripts": {
+        "clean": "rm -rf dist",
+        "build": "pnpm run clean && tsc",
+        "prepare": "pnpm run build",
+        "test": "jest"
+    },
+    "keywords": [
+        "cli",
+        "translation",
+        "frenglish"
+    ],
+    "author": "viv-cheung",
+    "license": "MIT",
+    "devDependencies": {
+        "@types/express": "^4.17.21",
+        "@types/figlet": "^1.7.0",
+        "@types/jest": "^27.0.0",
+        "@types/inquirer": "^9.0.7",
+        "@types/node": "^22.5.4",
+        "@types/node-fetch": "^2.6.12",
+        "happy-dom": "^16.8.1",
+        "jest": "^27.0.0",
+        "ts-jest": "^27.0.0",
+        "typescript": "^5.8.2",
+        "@types/yargs": "^17.0.0"
+    },
+    "dependencies": {
+        "@frenglish/utils": "workspace:*",
+        "@frenglish/sdk": "workspace:*",
+        "dotenv": "^16.4.5",
+        "figlet": "^1.8.0",
+        "glob": "8.0.3",
+        "glob-promise": "^6.0.7",
+        "inquirer": "^12.5.0",
+        "minimatch": "^10.0.1",
+        "node-fetch": "^3.3.2",
+        "open": "^10.1.0",
+        "vitest": "^3.0.4",
+        "yargs": "^17.7.2"
+    },
+    "files": [
+        "dist"
+    ]
+}
