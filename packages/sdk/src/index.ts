@@ -232,7 +232,7 @@ export interface FrenglishSDK {
  * @param apiKey - The API key for authentication with the Frenglish service
  * @returns An instance of the Frenglish SDK with all available methods
  */
-export function createSDK(apiKey: string): FrenglishSDK {
+export function FrenglishSDK(apiKey: string): FrenglishSDK {
   return {
     translate: async (content, isFullTranslation = false, filenames = [], partialConfig = {}) => {
       return translateUtil(content, apiKey, isFullTranslation, filenames, partialConfig)
@@ -301,4 +301,4 @@ export function createSDK(apiKey: string): FrenglishSDK {
 }
 
 // Export as default for backward compatibility
-export default createSDK;
+export default FrenglishSDK;
