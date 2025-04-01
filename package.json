@@ -11,8 +11,12 @@
         "build": "pnpm --filter '@frenglish/*' build",
         "build:cli": "pnpm --filter '@frenglish/cli' build",
         "clean": "pnpm -r run clean",
-        "lint": "eslint . --ext .ts,.tsx",
+        "lint": "eslint . --ext .ts,.tsx --fix",
+        "lint:all": "pnpm --filter '@frenglish/*' lint",
         "publish-packages": "pnpm build && pnpm --filter '@frenglish/utils' publish --no-git-checks && pnpm --filter '@frenglish/sdk' publish --no-git-checks",
         "test": "pnpm --filter '@frenglish/*' test"
+    },
+    "devDependencies": {
+        "eslint": "^9.23.0"
     }
 }

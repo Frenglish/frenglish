@@ -616,7 +616,7 @@ async function modifyConfiguration(sdk: FrenglishSDK, config: any) {
       saveLocalConfig(localConfig);
     }
   } else {
-    let promptConfig: any = {
+    const promptConfig: any = {
       type: fieldToModify === 'languages' ? 'checkbox' : 
             fieldToModify === 'originLanguage' ? 'list' : 'input',
       name: 'value',
