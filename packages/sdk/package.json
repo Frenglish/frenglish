@@ -1,6 +1,6 @@
 {
     "name": "@frenglish/sdk",
-    "version": "1.0.1",
+    "version": "1.0.1-beta.1",
     "description": "SDK for Frenglish translation service",
     "type": "module",
     "main": "dist/index.js",
@@ -8,9 +8,12 @@
     "types": "dist/index.d.ts",
     "exports": {
         ".": {
-            "types": "./dist/index.d.ts",
             "import": "./dist/index.js",
-            "require": "./dist/index.js"
+            "require": "./dist/index.cjs",
+            "types": "./dist/index.d.ts"
+        },
+        "./types": {
+            "types": "./dist/index.d.ts"
         }
     },
     "scripts": {
