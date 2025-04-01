@@ -1,6 +1,6 @@
 {
     "name": "@frenglish/utils",
-    "version": "1.0.1-beta.1",
+    "version": "1.0.2",
     "description": "Utils for Frenglish translation service",
     "type": "module",
     "main": "dist/index.js",
@@ -9,7 +9,6 @@
     "exports": {
         ".": {
             "import": "./dist/index.js",
-            "require": "./dist/index.cjs",
             "types": "./dist/index.d.ts"
         }
     },
