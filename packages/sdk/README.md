@@ -1,10 +1,12 @@
 # Frenglish SDK
-  _____                     _ _     _            _ 
- |  ___| __ ___ _ __   __ _| (_)___| |__    __ _(_)
- | |_ | '__/ _ \ '_ \ / _` | | / __| '_ \  / _` | |
- |  _|| | |  __/ | | | (_| | | \__ \ | | || (_| | |
- |_|  |_|  \___|_| |_|\__, |_|_|___/_| |_(_)__,_|_|
-                      |___/                        
+```bash
+                                     _____                     _ _     _            _ 
+                                    |  ___| __ ___ _ __   __ _| (_)___| |__    __ _(_)
+                                    | |_ | '__/ _ \ '_ \ / _` | | / __| '_ \  / _` | |
+                                    |  _|| | |  __/ | | | (_| | | \__ \ | | || (_| | |
+                                    |_|  |_|  \___|_| |_|\__, |_|_|___/_| |_(_)__,_|_|
+                                                         |___/                      
+```  
 
 A powerful SDK for integrating Frenglish.ai's translation services into your applications. This SDK provides a flexible and robust way to handle translations programmatically. By initializing the frenglish SDK with your private key, it will contain all the information about your translation configuration (rules, origin language, target languages, etc).
 

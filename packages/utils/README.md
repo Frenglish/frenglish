@@ -1,11 +1,12 @@
 # Frenglish Utils
-  _____                     _ _     _            _ 
- |  ___| __ ___ _ __   __ _| (_)___| |__    __ _(_)
- | |_ | '__/ _ \ '_ \ / _` | | / __| '_ \  / _` | |
- |  _|| | |  __/ | | | (_| | | \__ \ | | || (_| | |
- |_|  |_|  \___|_| |_|\__, |_|_|___/_| |_(_)__,_|_|
-                      |___/                        
-
+```bash
+                                     _____                     _ _     _            _ 
+                                    |  ___| __ ___ _ __   __ _| (_)___| |__    __ _(_)
+                                    | |_ | '__/ _ \ '_ \ / _` | | / __| '_ \  / _` | |
+                                    |  _|| | |  __/ | | | (_| | | \__ \ | | || (_| | |
+                                    |_|  |_|  \___|_| |_|\__, |_|_|___/_| |_(_)__,_|_|
+                                                         |___/                      
+```  
 A shared utilities package for the Frenglish SDK and CLI tools. This package provides common helper functions and types used across the Frenglish ecosystem.
 
 > **Note**: This package is primarily used internally by the Frenglish SDK and CLI. While it can be used directly, it's recommended to use the main SDK package for most use cases.
