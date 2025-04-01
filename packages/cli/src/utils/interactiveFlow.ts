@@ -87,8 +87,8 @@ export async function runGuidedTranslationFlow() {
           name: 'useExisting',
           message: chalk.yellow('What would you like to do?'),
           choices: [
-            { name: '✨ Create a new project', value: false },
             { name: '📂 Use an existing project', value: true },
+            { name: '✨ Create a new project', value: false },
           ],
         },
       ]);
@@ -293,13 +293,13 @@ async function runProjectConfigWizard(sdk: FrenglishSDK) {
     // Get translation path first
     const TRANSLATION_PATH = await selectPath(
       '[Required] Select or enter path to your source files:',
-      localConfig.TRANSLATION_PATH || './src'
+      localConfig.TRANSLATION_PATH || './'
     );
 
     // Then get output path, defaulting to translation path
     const TRANSLATION_OUTPUT_PATH = await selectPath(
       '[Required] Select or enter path where translated files should go:',
-      TRANSLATION_PATH || localConfig.TRANSLATION_OUTPUT_PATH || './i18n'
+      TRANSLATION_PATH || localConfig.TRANSLATION_OUTPUT_PATH || './'
     );
 
     // Get remaining config options
@@ -393,9 +393,9 @@ async function runTranslationWizard(config: any, selectedProject: Project) {
     if (!validation.isValid) {
       console.log(chalk.red('\n❌ Configuration validation failed. Missing required fields:'));
       validation.missingFields.forEach(field => {
-        console.log(chalk.yellow(`   • ${field}`));
+        console.log(chalk.cyan(`   • ${field}`));
       });
-      
+      console.log(`\n`)
       const { fixConfig } = await inquirer.prompt([
         {
           type: 'confirm',
@@ -405,60 +405,61 @@ async function runTranslationWizard(config: any, selectedProject: Project) {
         },
       ]);
 
+      // Go over fixes and let user select
       if (fixConfig) {
         const sdk = FrenglishSDK(selectedProject.privateApiKey);
         const languages = await sdk.getSupportedLanguages();
-        
-        // Only prompt for missing fields
-        const missingFields = await Promise.all(validation.missingFields.map(async field => {
+      
+        // Iterate through each missing field sequentially
+        for (const field of validation.missingFields) {
           switch (field) {
-            case 'Origin Language':
-              return {
-                type: 'list' as const,
-                name: 'originLanguage',
-                message: '[Required] What is your origin language?',
-                choices: languages.map(lang => ({ name: lang, value: lang })),
-              };
-            case 'Target Languages':
-              return {
-                type: 'checkbox' as const,
-                name: 'languages',
-                message: '[Required] Select target languages:',
-                choices: languages.map(lang => ({ name: lang, value: lang })),
-              };
+            case 'Origin Language': {
+              const { originLanguage } = await inquirer.prompt([
+                {
+                  type: 'list',
+                  name: 'originLanguage',
+                  message: '[Required] What is your origin language?',
+                  choices: languages.map(lang => ({ name: lang, value: lang })),
+                }
+              ]);
+              config.originLanguage = originLanguage;
+              break;
+            }
+            case 'Target Languages': {
+              const { languages: targetLanguages } = await inquirer.prompt([
+                {
+                  type: 'checkbox',
+                  name: 'languages',
+                  message: '[Required] Select target languages:',
+                  choices: languages.map(lang => ({ name: lang, value: lang })),
+                }
+              ]);
+              config.languages = targetLanguages;
+              break;
+            }
             case 'Translation Path': {
+              // Use your selectPath function to get a path sequentially
               const translationPath = await selectPath(
                 '[Required] Select or enter path to your source files:',
-                './src'
+                './'
               );
-              return {
-                type: 'input' as const,
-                name: 'TRANSLATION_PATH',
-                message: '[Required] Path to your source files:',
-                default: translationPath
-              };
+              config.TRANSLATION_PATH = translationPath;
+              break;
             }
             case 'Translation Output Path': {
               const outputPath = await selectPath(
                 '[Required] Select or enter path where translated files should go:',
-                './i18n'
+                './'
               );
-              return {
-                type: 'input' as const,
-                name: 'TRANSLATION_OUTPUT_PATH',
-                message: '[Required] Where should translated files go:',
-                default: outputPath
-              };
+              config.TRANSLATION_OUTPUT_PATH = outputPath;
+              break;
             }
             default:
-              return null;
+              break;
           }
-        }));
-
-        const filteredFields = missingFields.filter((q): q is NonNullable<typeof q> => q !== null);
-        const missingConfig = await inquirer.prompt(filteredFields);
-        config = { ...config, ...missingConfig };
-        saveLocalConfig(config)
+        }
+      
+        saveLocalConfig(config);
         await sdk.updateConfiguration({ ...config });
         if (config.projectName) {
           await sdk.updateProjectName(config.projectName);
@@ -466,6 +467,7 @@ async function runTranslationWizard(config: any, selectedProject: Project) {
       } else {
         throw new Error('❌ Configuration validation failed. Cancelled translation');
       }
+      
     } else {
       console.log(chalk.green('\n✅ Configuration validated'));
     }
@@ -634,10 +636,10 @@ async function modifyConfiguration(sdk: FrenglishSDK, config: any) {
           promptConfig.default = 'My Project';
           break;
         case 'TRANSLATION_PATH':
-          promptConfig.default = './src';
+          promptConfig.default = './';
           break;
         case 'TRANSLATION_OUTPUT_PATH':
-          promptConfig.default = './i18n';
+          promptConfig.default = './';
           break;
         case 'rules':
           promptConfig.default = 'Use a casual and friendly tone.';
@@ -699,20 +701,21 @@ async function modifyConfiguration(sdk: FrenglishSDK, config: any) {
 }
 
 async function getDirectoryContents(basePath = './'): Promise<{ name: string; value: string; }[]> {
+  const paths = [
+    { name: `✅ Select Current Path (${chalk.gray(basePath)})`, value: '__CONFIRM__' },
+    { name: '⬅️  ../ (Go up one level)', value: '../' },
+    { name: `📝 Input custom path`, value: '__CUSTOM__' }
+  ];
+
   try {
     const resolvedPath = path.resolve(process.cwd(), basePath);
     const entries = await fs.promises.readdir(resolvedPath, { withFileTypes: true });
     
-    const paths = [
-      { name: '📁 Enter custom path...', value: '__CUSTOM__' },
-      { name: '📂 ../ (Go up one level)', value: '../' }
-    ];
-
     // Add directories first
     const directories = entries
       .filter(entry => entry.isDirectory())
       .map(entry => ({
-        name: `📁 ${entry.name}/`,
+        name: `  📁 ${entry.name}/`,
         value: path.join(basePath, entry.name, '/')
       }));
     
@@ -720,16 +723,13 @@ async function getDirectoryContents(basePath = './'): Promise<{ name: string; va
     const files = entries
       .filter(entry => entry.isFile())
       .map(entry => ({
-        name: `📄 ${entry.name}`,
+        name: `  📄 ${entry.name}`,
         value: path.join(basePath, entry.name)
       }));
 
     return [...paths, ...directories, ...files];
   } catch {
-    return [
-      { name: '📁 Enter custom path...', value: '__CUSTOM__' },
-      { name: '📂 ../ (Go up one level)', value: '../' }
-    ];
+    return paths
   }
 }
 
@@ -746,6 +746,19 @@ async function selectPath(message: string, defaultPath?: string): Promise<string
       choices,
       default: defaultPath
     }]);
+
+    if (selected === '__CONFIRM__') {
+      const { confirmPath } = await inquirer.prompt([{
+        type: 'confirm',
+        name: 'confirmPath',
+        message: chalk.yellow(`Select `) + chalk.cyan(`${currentPath}?`),
+        default: true
+      }]);
+
+      if (confirmPath) {
+        return currentPath
+      } 
+    }
 
     if (selected === '__CUSTOM__') {
       const { customPath } = await inquirer.prompt([{
@@ -765,18 +778,6 @@ async function selectPath(message: string, defaultPath?: string): Promise<string
     if (selected.endsWith('/')) {
       currentPath = selected;
       continue;
-    }
-
-    // Add confirmation step for selected path
-    const { confirm } = await inquirer.prompt([{
-      type: 'confirm',
-      name: 'confirm',
-      message: `Selected path: ${selected}\nIs this the correct path?`,
-      default: true
-    }]);
-
-    if (confirm) {
-      return selected;
     }
   }
 }

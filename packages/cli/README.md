@@ -1,5 +1,12 @@
 # Frenglish CLI
 
+  _____                     _ _     _            _ 
+ |  ___| __ ___ _ __   __ _| (_)___| |__    __ _(_)
+ | |_ | '__/ _ \ '_ \ / _` | | / __| '_ \  / _` | |
+ |  _|| | |  __/ | | | (_| | | \__ \ | | || (_| | |
+ |_|  |_|  \___|_| |_|\__, |_|_|___/_| |_(_)__,_|_|
+                      |___/                        
+
 A powerful command-line interface for managing translations with Frenglish.ai. This CLI tool helps you manage your translation projects, configure settings, and generate translations for your localization files all in your terminal.
 
 ## Features

@@ -1,4 +1,10 @@
 # Frenglish SDK
+  _____                     _ _     _            _ 
+ |  ___| __ ___ _ __   __ _| (_)___| |__    __ _(_)
+ | |_ | '__/ _ \ '_ \ / _` | | / __| '_ \  / _` | |
+ |  _|| | |  __/ | | | (_| | | \__ \ | | || (_| | |
+ |_|  |_|  \___|_| |_|\__, |_|_|___/_| |_(_)__,_|_|
+                      |___/                        
 
 A comprehensive translation management system for your applications. The Frenglish SDK provides tools for managing translations, handling multiple languages, and integrating with the Frenglish.ai service.
 

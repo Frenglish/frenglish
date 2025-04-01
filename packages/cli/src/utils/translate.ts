@@ -18,12 +18,12 @@ dotenv.config({ path: path.join(process.cwd(), '.env') })
 
 // Load local config first, then fall back to environment variables
 const localConfig = loadLocalConfig()
-const TRANSLATION_PATH = localConfig.translationPath || process.env.TRANSLATION_PATH!
-const EXCLUDED_TRANSLATION_PATH = localConfig.excludedTranslationPath || 
+const TRANSLATION_PATH = localConfig.TRANSLATION_PATH || process.env.TRANSLATION_PATH!
+const EXCLUDED_TRANSLATION_PATH = localConfig.EXCLUDED_TRANSLATION_PATH || 
   (process.env.EXCLUDED_TRANSLATION_PATH
     ? JSON.parse(process.env.EXCLUDED_TRANSLATION_PATH.replace(/'/g, '"'))
     : [])
-const TRANSLATION_OUTPUT_PATH = localConfig.translationOutputPath || 
+const TRANSLATION_OUTPUT_PATH = localConfig.TRANSLATION_OUTPUT_PATH || 
   process.env.TRANSLATION_OUTPUT_PATH || 
   TRANSLATION_PATH
 

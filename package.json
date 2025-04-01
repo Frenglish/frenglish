@@ -8,10 +8,11 @@
         "packages/utils"
     ],
     "scripts": {
+        "build": "pnpm --filter '@frenglish/*' build",
+        "build:cli": "pnpm --filter '@frenglish/cli' build",
         "clean": "pnpm -r run clean",
-        "build": "pnpm clean && pnpm --filter '@frenglish/utils' build && pnpm --filter '@frenglish/sdk' build",
-        "test": "pnpm --filter '@frenglish/*' test",
         "lint": "eslint . --ext .ts,.tsx",
-        "publish-packages": "pnpm build && pnpm --filter '@frenglish/utils' publish --no-git-checks && pnpm --filter '@frenglish/sdk' publish --no-git-checks"
+        "publish-packages": "pnpm build && pnpm --filter '@frenglish/utils' publish --no-git-checks && pnpm --filter '@frenglish/sdk' publish --no-git-checks",
+        "test": "pnpm --filter '@frenglish/*' test"
     }
 }
