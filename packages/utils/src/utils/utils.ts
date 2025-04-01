@@ -1,7 +1,7 @@
 import * as fs from 'fs/promises'
 import * as path from 'path'
 import glob from 'glob-promise'
-import { minimatch } from 'minimatch'
+import { Minimatch } from 'minimatch'
 
 /**
  * Finds language files by detecting where in the path the language code occurs.
@@ -33,11 +33,11 @@ export async function findLanguageFilesToTranslate(
 
       // If pattern contains glob characters (* or **), use minimatch
       if (cleanPattern.includes('*')) {
-        return minimatch(normalizedFile, cleanPattern, {
+        return new Minimatch(cleanPattern, {
           dot: true,
           matchBase: true,
           nocase: true
-        })
+        }).match(normalizedFile)
       }
 
       // Otherwise, use simple includes for exact path matching
@@ -53,7 +53,7 @@ export async function findLanguageFilesToTranslate(
     }
 
     const absoluteParts = file.split(path.sep)
-    const language = absoluteParts.find(part => supportedLanguages.includes(part.toLowerCase()))
+    const language = absoluteParts.find((part: string) => supportedLanguages.includes(part.toLowerCase()))
     const fullPath = path.join(basePath, relativeToBase)
     const targetLanguage = language || supportedLanguages[0]
     if (languageFiles.has(targetLanguage)) {
