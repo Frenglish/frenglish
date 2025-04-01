@@ -54,8 +54,8 @@ const result = await sdk.translate(
 
 // Translate a single string
 const translated = await sdk.translateString(
-  content: string,            // String to translate
-  lang: string,              // Target language code
+  content: string | string[],            // String or string[] to translate
+  lang: string,                          // Target language code
   partialConfig?: PartialConfiguration
 );
 ```
@@ -127,10 +127,10 @@ const textMap = await sdk.getTextMap();
 2. **translateString**
    - Description: Translates a single string to a specific target language
    - Parameters:
-     - `content`: string - Single string to translate
+     - `content`: string | string [] - Single string to translate or an array of strings to translate
      - `lang`: string - Target language code
      - `partialConfig`: PartialConfiguration (optional) - Configuration overrides
-   - Returns: Promise<string | undefined>
+   - Returns: Promise<string | string[] | undefined>
 
 3. **getTranslationStatus**
    - Description: Checks the current status of a translation request (e.g., completed, in progress, cancelled)
