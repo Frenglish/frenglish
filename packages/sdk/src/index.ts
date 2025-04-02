@@ -91,7 +91,7 @@ export interface FrenglishSDK {
    * Translates a single string to a specified target language.
    * Includes validation of supported languages and polling for results.
    *
-   * @param content - The string content to translate
+   * @param content - The string or array of strings content to translate
    * @param lang - Target language code (use getSupportedLanguages() to get valid codes)
    * @param partialConfig - Optional configuration overrides
    * @returns Translated string if successful, undefined if not found
@@ -100,7 +100,7 @@ export interface FrenglishSDK {
    * @example
    * const translated = await sdk.translateString('Hello world', 'fr');
    */
-  translateString(content: string, lang: string, partialConfig?: PartialConfiguration): Promise<string | undefined>;
+  translateString(content: string | string[], lang: string, partialConfig?: PartialConfiguration): Promise<string | undefined>;
 
   /**
    * Gets the current status of a translation request.

@@ -35,7 +35,7 @@ interface TokenData {
 export async function login() {
   const codeVerifier = base64URLEncode(crypto.randomBytes(32));
   const codeChallenge = base64URLEncode(sha256(Buffer.from(codeVerifier)));
-  const audience = (FRENGLISH_BACKEND_URL === 'https://api.frenglish.ai') ? `https://api.frenglish.ai/` : `https://${AUTH0_DOMAIN}/api/v2/`;
+  const audience = FRENGLISH_BACKEND_URL.includes('api.frenglish.ai') ? `https://api.frenglish.ai/` : `https://${AUTH0_DOMAIN}/api/v2/`;
 
   // Add audience and scope parameters to the authorization URL
   const authUrl = `https://${AUTH0_DOMAIN}/authorize?` + new URLSearchParams({

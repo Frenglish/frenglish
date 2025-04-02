@@ -13,8 +13,8 @@
         "clean": "pnpm -r run clean",
         "lint": "eslint . --ext .ts,.tsx --fix",
         "lint:all": "pnpm --filter '@frenglish/*' lint",
-        "publish-packages": "pnpm build && pnpm --filter '@frenglish/utils' publish --no-git-checks && pnpm --filter '@frenglish/sdk' publish --no-git-checks && pnpm --filter '@frenglish/cli' publish --no-git-check",
-        "publish-packages:next": "pnpm build && pnpm --filter '@frenglish/utils' publish --no-git-checks --tag next && pnpm --filter '@frenglish/sdk' publish --no-git-checks --tag next && pnpm --filter '@frenglish/cli' publish --no-git-check --tag next",
+        "publish-packages": "pnpm i && pnpm build && pnpm --filter '@frenglish/utils' publish --no-git-checks && pnpm --filter '@frenglish/sdk' publish --no-git-checks && pnpm --filter '@frenglish/cli' publish --no-git-check",
+        "publish-packages:next": "pnpm i && pnpm build && pnpm --filter '@frenglish/utils' publish --no-git-checks --tag next && pnpm --filter '@frenglish/sdk' publish --no-git-checks --tag next && pnpm --filter '@frenglish/cli' publish --no-git-check --tag next",
         "test": "pnpm --filter '@frenglish/*' test"
     },
     "devDependencies": {

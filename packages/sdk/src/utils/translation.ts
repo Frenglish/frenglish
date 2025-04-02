@@ -92,21 +92,21 @@ export async function translate(
 /**
  * Translates a single string and returns the translated result.
  *
- * @param {string} content - The string content to translate.
+ * @param {string | string[]} content - The string or array of strings to translate.
  * @param {string} lang - The target language code.
  * @param {string} apiKey - API key for authentication
  * @param {PartialConfiguration} [partialConfig={}] - Optional overrides to the default configuration.
- * @returns {Promise<string | undefined>} A promise that resolves to:
- *   - The translated string if successful
+ * @returns {Promise<string | string[] | undefined>} A promise that resolves to:
+ *   - The translated string(s) if successful
  *   - undefined if the translation result is not in expected format
  * @throws {Error} If the translation is cancelled, the language is unsupported, polling times out, or the request fails.
  */
 export async function translateString(
-  content: string,
+  content: string | string[],
   lang: string,
   apiKey: string,
   partialConfig: PartialConfiguration = {}
-): Promise<string | undefined> {
+): Promise<string | string[] | undefined> {
   const parsedConfig = await parsePartialConfig(partialConfig)
 
   const supportedLanguages = await apiRequest<string[]>('/api/translation/supported-languages', {
@@ -128,12 +128,26 @@ export async function translateString(
   })
 
   const translationContent = await pollForTranslation(data.translationId, apiKey)
-  const translatedContent = translationContent[0]?.files[0]?.content
-  if (translatedContent) {
-    const parsedContent = JSON.parse(translatedContent as string)
-    return Object.values(parsedContent)[0] as string
-  }
-  return undefined
+  
+  // Process all translations and files
+  const allTranslations = translationContent.flatMap(translation => 
+    translation.files.map(file => {
+      if (!file.content) return []
+      try {
+        const parsedContent = JSON.parse(file.content as string)
+        return Object.values(parsedContent)
+      } catch (e) {
+        console.error('Error parsing translation content:', e)
+        return []
+      }
+    })
+  ).flat()
+
+  if (allTranslations.length === 0) return undefined
+  // If there's only one translation, return it as a string to maintain backward compatibility
+  if (allTranslations.length === 1) return allTranslations[0] as string
+  // If there are multiple translations, return them as an array
+  return allTranslations as string[]
 }
 
 /**
