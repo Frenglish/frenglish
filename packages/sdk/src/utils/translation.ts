@@ -92,12 +92,12 @@ export async function translate(
 /**
  * Translates a single string and returns the translated result.
  *
- * @param {string | string[]} content - The string content to translate.
+ * @param {string | string[]} content - The string or array of strings to translate.
  * @param {string} lang - The target language code.
  * @param {string} apiKey - API key for authentication
  * @param {PartialConfiguration} [partialConfig={}] - Optional overrides to the default configuration.
  * @returns {Promise<string | string[] | undefined>} A promise that resolves to:
- *   - The translated string if successful
+ *   - The translated string(s) if successful
  *   - undefined if the translation result is not in expected format
  * @throws {Error} If the translation is cancelled, the language is unsupported, polling times out, or the request fails.
  */
