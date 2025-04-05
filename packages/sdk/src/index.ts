@@ -100,7 +100,7 @@ export interface FrenglishSDK {
    * @example
    * const translated = await sdk.translateString('Hello world', 'fr');
    */
-  translateString(content: string | string[], lang: string, partialConfig?: PartialConfiguration): Promise<string | undefined>;
+  translateString(content: string | string[], lang: string, partialConfig?: PartialConfiguration): Promise<string | string[] | undefined>;
 
   /**
    * Gets the current status of a translation request.
