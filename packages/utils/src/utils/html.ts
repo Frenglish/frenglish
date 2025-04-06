@@ -23,32 +23,183 @@ export const TRANSLATABLE_ATTRIBUTES = [
 const DEFAULT_EXCLUDED_SELECTORS = ['.no-translate']
   
 /**
- * Block-level tags to treat as a single placeholder if they don't contain <code> or <pre>.
+ * HTML elements that are purely for styling or text decoration.
+ * These elements should be treated as part of the text content when they appear together.
+ * Note: Elements like <code>, <kbd>, <samp>, <var> are excluded as they typically contain
+ * code or technical content that shouldn't be translated.
  */
-const BLOCK_LEVEL_TAGS = [
-  'p',
-  'li',
-  'blockquote',
-  'h1',
-  'h2',
-  'h3',
-  'h4',
-  'h5',
-  'h6',
+const STYLING_ELEMENTS = [
+  // Basic text styling
+  'strong', 'em', 'b', 'i',
+  'u', 'span', 'mark', 'small',
+  'sub', 'sup', 'del', 'ins',
+  'cite', 'dfn', 'abbr', 'time',
+  'q', 's', 'strike', 'tt',
+  'big', 'font', 'acronym', 'bdo',
+  // Ruby annotations
+  'ruby', 'rt', 'rp',
+  // Text control
+  'wbr'
 ]
   
+const MAX_BLOCK_SIZE = 5000 // Maximum characters for a block-level translation
+  
 /**
- * EXTRACT PHASE
- *  - Skips <code>/<pre> text
- *  - If block-level has no <code>/<pre>, treat entire block as one snippet
- *  - Otherwise, do the normal text-node approach
- *  - Also handles attributes, <meta content>, data-*, etc.
+ * Processes a single HTML element for translation.
+ * @param element - The HTML element to process
+ * @param textMap - The map to store text placeholders
+ * @param excludedSelectors - Selectors to exclude from translation
+ * @param nextDataContent - Content of __NEXT_DATA__ script if present
  */
+function processElement(
+  element: any,
+  textMap: { [placeholder: string]: string },
+  excludedSelectors: string[],
+  nextDataContent: string | null
+): void {
+  const tagName = element.tagName.toLowerCase()
+  const inputType = element.getAttribute('type')?.toLowerCase() || ''
+
+  // Skip if excluded
+  if (excludedSelectors.some(sel => element.matches(sel))) {
+    return
+  }
+
+  // Skip <style>
+  if (tagName === 'style') {
+    return
+  }
+
+  // Skip <script> if NOT __NEXT_DATA__
+  if (tagName === 'script' && element.id !== '__NEXT_DATA__') {
+    return
+  }
+
+  // Special handling for __NEXT_DATA__
+  if (tagName === 'script' && element.id === '__NEXT_DATA__' && nextDataContent) {
+    try {
+      const jsonData = JSON.parse(nextDataContent)
+      if (Object.prototype.hasOwnProperty.call(jsonData, 'props')) {
+        jsonData.props = processNextDataValue(jsonData.props, textMap)
+      }
+      element.textContent = JSON.stringify(jsonData)
+    } catch (e) {
+      console.error('Error processing __NEXT_DATA__ JSON:', e)
+    }
+    return
+  }
+
+  // Handle translatable attributes first, before processing content
+  TRANSLATABLE_ATTRIBUTES.forEach(attrName => {
+    const attrValue = element.getAttribute(attrName)
+    if (attrValue && attrValue.trim() !== '') {
+      const originalText = attrValue.trim()
+      const placeholder = generatePlaceholder(originalText)
+      textMap[placeholder] = originalText
+      element.setAttribute(attrName, placeholder)
+    }
+  })
+
+  // 'value' for button/option
+  const valueAttr = element.getAttribute('value')
+  if (valueAttr) {
+    if (
+      tagName === 'button' ||
+      tagName === 'option' ||
+      (tagName === 'input' && ['button', 'submit', 'reset'].includes(inputType))
+    ) {
+      if (valueAttr.trim()) {
+        const placeholder = generatePlaceholder(valueAttr.trim())
+        textMap[placeholder] = valueAttr.trim()
+        element.setAttribute('value', placeholder)
+      }
+    }
+  }
+
+  // meta 'content' for recognized names
+  if (tagName === 'meta' && element.getAttribute('content')) {
+    const metaName = (element.getAttribute('name') || '').toLowerCase()
+    if (
+      ['description', 'keywords', 'author', 'og:title', 'og:description'].includes(metaName)
+    ) {
+      const contentVal = element.getAttribute('content') || ''
+      if (contentVal.trim()) {
+        const placeholder = generatePlaceholder(contentVal.trim())
+        textMap[placeholder] = contentVal.trim()
+        element.setAttribute('content', placeholder)
+      }
+    }
+  }
+
+  // data-* attributes
+  Array.from(element.attributes).forEach(attr => {
+    const typedAttr = attr as { name: string; value: string }
+    if (typedAttr.name.startsWith('data-') && ['data-tooltip', 'data-title'].includes(typedAttr.name)) {
+      const val = typedAttr.value
+      if (val.trim()) {
+        const placeholder = generatePlaceholder(val.trim())
+        textMap[placeholder] = val.trim()
+        element.setAttribute(typedAttr.name, placeholder)
+      }
+    }
+  })
+
+  // If element contains only text nodes and styling elements, treat as a single unit
+  const hasOnlyTextAndStyling = Array.from(element.children as HTMLCollectionOf<Element>).every(child => {
+    const childTag = child.tagName.toLowerCase()
+    return STYLING_ELEMENTS.includes(childTag)
+  }) && Array.from(element.childNodes as NodeListOf<Node>).some(node => node.nodeType === 3)
+
+  if (hasOnlyTextAndStyling) {
+    const fullText = element.textContent || ''
+    if (fullText.trim()) {
+      const placeholder = generatePlaceholder(fullText)
+      textMap[placeholder] = fullText
+      element.innerHTML = placeholder
+      return // Skip processing children since we've handled the entire content
+    }
+  }
+
+  // Process text nodes that aren't part of a styling group
+  Array.from(element.childNodes).forEach((node: unknown) => {
+    if ((node as { nodeType: number }).nodeType === 3) { // Node.TEXT_NODE
+      const textNode = node as unknown as { data: string; parentElement: any }
+      const parentElement = textNode.parentElement
+
+      // Skip if parent is code/pre or excluded
+      if (!parentElement || parentElement.matches('code, pre')) return
+      if (excludedSelectors.some(sel => parentElement.matches(sel))) return
+
+      const fullText = textNode.data || ''
+      const leadingMatch = fullText.match(/^\s*/)
+      const trailingMatch = fullText.match(/\s*$/)
+      const leadingSpace = leadingMatch ? leadingMatch[0] : ''
+      const trailingSpace = trailingMatch ? trailingMatch[0] : ''
+      const middleText = fullText.slice(
+        leadingSpace.length,
+        fullText.length - trailingSpace.length
+      )
+
+      if (middleText.trim() !== '') {
+        const placeholder = generatePlaceholder(middleText)
+        textMap[placeholder] = middleText
+        textNode.data = leadingSpace + placeholder + trailingSpace
+      }
+    }
+  })
+
+  // Process child elements
+  Array.from(element.children).forEach(child => {
+    processElement(child, textMap, excludedSelectors, nextDataContent)
+  })
+}
+
 export async function extractStrings(
   html: string,
   config: Configuration
 ): Promise<ExtractionResult> {
   const excludedBlocks = config?.excludedTranslationBlocks || []
+  const maxBlockSize = config?.maxBlockSize || MAX_BLOCK_SIZE
   
   // Pre-process __NEXT_DATA__ script to handle JSON content
   const nextDataMatch = html.match(/<script id="__NEXT_DATA__">([\s\S]*?)<\/script>/)
@@ -79,146 +230,8 @@ export async function extractStrings(
     }
   })
   
-  function processElement(element: any) {
-    const tagName = element.tagName.toLowerCase()
-    const inputType = element.getAttribute('type')?.toLowerCase() || ''
-  
-    // Skip if excluded
-    if (excludedSelectors.some(sel => element.matches(sel))) {
-      return
-    }
-  
-    // Skip <style>
-    if (tagName === 'style') {
-      return
-    }
-  
-    // Skip <script> if NOT __NEXT_DATA__
-    if (tagName === 'script' && element.id !== '__NEXT_DATA__') {
-      return
-    }
-  
-    // Special handling for __NEXT_DATA__
-    if (tagName === 'script' && element.id === '__NEXT_DATA__' && nextDataContent) {
-      try {
-        const jsonData = JSON.parse(nextDataContent)
-        if (Object.prototype.hasOwnProperty.call(jsonData, 'props')) {
-          jsonData.props = processNextDataValue(jsonData.props, textMap)
-        }
-        element.textContent = JSON.stringify(jsonData)
-      } catch (e) {
-        console.error('Error processing __NEXT_DATA__ JSON:', e)
-      }
-      return
-    }
-  
-    // If block-level & no <code>/<pre> inside => treat entire block as single snippet
-    const isBlockLevel = BLOCK_LEVEL_TAGS.includes(tagName)
-    const hasCodeOrPre = element.querySelector('code, pre') !== null
-  
-    if (isBlockLevel && !hasCodeOrPre) {
-      const blockInnerHtml = element.innerHTML
-      if (blockInnerHtml.trim()) {
-        const placeholder = generatePlaceholder(blockInnerHtml)
-        textMap[placeholder] = blockInnerHtml
-        element.innerHTML = placeholder
-      }
-    } else {
-      // Normal text-node approach
-      Array.from(element.childNodes).forEach((node: unknown) => {
-        if ((node as { nodeType: number }).nodeType === 3) { // Node.TEXT_NODE
-          const textNode = node as unknown as { data: string; parentElement: any }
-          const parentElement = textNode.parentElement
-  
-          // Skip if parent is code/pre or excluded
-          if (!parentElement || parentElement.matches('code, pre')) return
-          if (excludedSelectors.some(sel => parentElement.matches(sel))) return
-  
-          const fullText = textNode.data || ''
-          const leadingMatch = fullText.match(/^\s*/)
-          const trailingMatch = fullText.match(/\s*$/)
-          const leadingSpace = leadingMatch ? leadingMatch[0] : ''
-          const trailingSpace = trailingMatch ? trailingMatch[0] : ''
-          const middleText = fullText.slice(
-            leadingSpace.length,
-            fullText.length - trailingSpace.length
-          )
-  
-          if (middleText.trim() !== '') {
-            const placeholder = generatePlaceholder(middleText)
-            textMap[placeholder] = middleText
-            textNode.data = leadingSpace + placeholder + trailingSpace
-          }
-        }
-      })
-    }
-  
-    // Handle translatable attributes
-    TRANSLATABLE_ATTRIBUTES.forEach(attrName => {
-      const attrValue = element.getAttribute(attrName)
-      if (attrValue && attrValue.trim() !== '') {
-        const originalText = attrValue.trim()
-        const placeholder = generatePlaceholder(originalText)
-        textMap[placeholder] = originalText
-        element.setAttribute(attrName, attrValue.replace(originalText, placeholder))
-      }
-    })
-  
-    // 'value' for button/option
-    const valueAttr = element.getAttribute('value')
-    if (valueAttr) {
-      if (
-        tagName === 'button' ||
-        tagName === 'option' ||
-        (tagName === 'input' && ['button', 'submit', 'reset'].includes(inputType))
-      ) {
-        if (valueAttr.trim()) {
-          const placeholder = generatePlaceholder(valueAttr.trim())
-          textMap[placeholder] = valueAttr.trim()
-          element.setAttribute('value', valueAttr.replace(valueAttr.trim(), placeholder))
-        }
-      }
-    }
-  
-    // meta 'content' for recognized names
-    if (tagName === 'meta' && element.getAttribute('content')) {
-      const metaName = (element.getAttribute('name') || '').toLowerCase()
-      if (
-        ['description', 'keywords', 'author', 'og:title', 'og:description'].includes(metaName)
-      ) {
-        const contentVal = element.getAttribute('content') || ''
-        if (contentVal.trim()) {
-          const placeholder = generatePlaceholder(contentVal.trim())
-          textMap[placeholder] = contentVal.trim()
-          element.setAttribute(
-            'content',
-            contentVal.replace(contentVal.trim(), placeholder)
-          )
-        }
-      }
-    }
-  
-    // data-* attributes
-    Array.from(element.attributes).forEach(attr => {
-      const typedAttr = attr as { name: string; value: string }
-      if (typedAttr.name.startsWith('data-') && ['data-tooltip', 'data-title'].includes(typedAttr.name)) {
-        const val = typedAttr.value
-        if (val.trim()) {
-          const placeholder = generatePlaceholder(val.trim())
-          textMap[placeholder] = val.trim()
-          element.setAttribute(typedAttr.name, val.replace(val.trim(), placeholder))
-        }
-      }
-    })
-  
-    // Process child elements
-    Array.from(element.children).forEach(child => {
-      processElement(child)
-    })
-  }
-  
   // Start processing from the document body
-  processElement(doc.documentElement)
+  processElement(doc.documentElement, textMap, excludedSelectors, nextDataContent)
   
   return {
     textMap,
