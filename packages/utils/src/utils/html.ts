@@ -20,7 +20,7 @@ export const TRANSLATABLE_ATTRIBUTES = [
   // data-* attributes handled contextually
 ]
   
-const DEFAULT_EXCLUDED_SELECTORS = ['.no-translate']
+const DEFAULT_EXCLUDED_SELECTORS = ['.no-translate', 'code']
   
 /**
  * HTML elements that are purely for styling or text decoration.
@@ -39,7 +39,9 @@ const STYLING_ELEMENTS = [
   // Ruby annotations
   'ruby', 'rt', 'rp',
   // Text control
-  'wbr'
+  'wbr',
+  // Links (they're part of the text flow)
+  'a'
 ]
   
 const MAX_BLOCK_SIZE = 5000 // Maximum characters for a block-level translation
@@ -60,19 +62,15 @@ function processElement(
   const tagName = element.tagName.toLowerCase()
   const inputType = element.getAttribute('type')?.toLowerCase() || ''
 
-  // Skip if excluded
+  // Skip if element itself is excluded
   if (excludedSelectors.some(sel => element.matches(sel))) {
+    console.log('Skipping excluded element:', element.outerHTML)
     return
   }
 
-  // Skip <style>
-  if (tagName === 'style') {
-    return
-  }
-
-  // Skip <script> if NOT __NEXT_DATA__
-  if (tagName === 'script' && element.id !== '__NEXT_DATA__') {
-    return
+  // Skip <style> and <script> (unless it's __NEXT_DATA__)
+  if (tagName === 'style' || (tagName === 'script' && element.id !== '__NEXT_DATA__')) {
+    return  // Early return without processing any content
   }
 
   // Special handling for __NEXT_DATA__
@@ -144,53 +142,81 @@ function processElement(
     }
   })
 
-  // If element contains only text nodes and styling elements, treat as a single unit
-  const hasOnlyTextAndStyling = Array.from(element.children as HTMLCollectionOf<Element>).every(child => {
-    const childTag = child.tagName.toLowerCase()
-    return STYLING_ELEMENTS.includes(childTag)
-  }) && Array.from(element.childNodes as NodeListOf<Node>).some(node => node.nodeType === 3)
+  // Check if any immediate children are excluded
+  const hasExcludedChild = Array.from<Element>(element.children).some(child => 
+    excludedSelectors.some(sel => child.matches(sel))
+  )
 
-  if (hasOnlyTextAndStyling) {
-    const fullText = element.textContent || ''
-    if (fullText.trim()) {
-      const placeholder = generatePlaceholder(fullText)
-      textMap[placeholder] = fullText
-      element.innerHTML = placeholder
-      return // Skip processing children since we've handled the entire content
+  // Check if all children are either text nodes or styling elements
+  const allChildrenAreStylingOrText = Array.from(element.childNodes as NodeListOf<Node>).every(node => {
+    if (node.nodeType === 3) return true // Text node
+    if (node.nodeType === 1) { // Element node
+      const childTag = (node as Element).tagName.toLowerCase()
+      return STYLING_ELEMENTS.includes(childTag)
     }
-  }
-
-  // Process text nodes that aren't part of a styling group
-  Array.from(element.childNodes).forEach((node: unknown) => {
-    if ((node as { nodeType: number }).nodeType === 3) { // Node.TEXT_NODE
-      const textNode = node as unknown as { data: string; parentElement: any }
-      const parentElement = textNode.parentElement
-
-      // Skip if parent is code/pre or excluded
-      if (!parentElement || parentElement.matches('code, pre')) return
-      if (excludedSelectors.some(sel => parentElement.matches(sel))) return
-
-      const fullText = textNode.data || ''
-      const leadingMatch = fullText.match(/^\s*/)
-      const trailingMatch = fullText.match(/\s*$/)
-      const leadingSpace = leadingMatch ? leadingMatch[0] : ''
-      const trailingSpace = trailingMatch ? trailingMatch[0] : ''
-      const middleText = fullText.slice(
-        leadingSpace.length,
-        fullText.length - trailingSpace.length
-      )
-
-      if (middleText.trim() !== '') {
-        const placeholder = generatePlaceholder(middleText)
-        textMap[placeholder] = middleText
-        textNode.data = leadingSpace + placeholder + trailingSpace
-      }
-    }
+    return false
   })
 
+  // If element has excluded children, skip processing its content
+  if (hasExcludedChild) {
+    // Process text nodes first
+    Array.from(element.childNodes as NodeListOf<Node>).forEach(node => {
+      if (node.nodeType === 3) { // Text node
+        const text = (node as Text).data
+        if (text.trim()) {  // Keep trim() for the check
+          const placeholder = generatePlaceholder(text)
+          textMap[placeholder] = text  // Store original text with spacing
+          ;(node as Text).data = (node as Text).data.replace(text, placeholder)
+        }
+      }
+    })
+
+    // Then process child elements
+    Array.from<Element>(element.children).forEach(child => {
+      processElement(child, textMap, excludedSelectors, nextDataContent)
+    })
+    return
+  }
+
+  // If all children are styling elements or text nodes, treat as a single unit
+  if (allChildrenAreStylingOrText) {
+    const fullText = element.textContent || ''
+    if (fullText.trim()) {  // Keep trim() for the check
+      const placeholder = generatePlaceholder(fullText)
+      textMap[placeholder] = fullText  // Store original text with spacing
+
+      // Process text nodes while preserving HTML structure and attributes
+      const processTextNodes = (node: Node) => {
+        if (node.nodeType === 3) { // Text node
+          const text = node.textContent || ''
+          if (text.trim()) {
+            node.textContent = placeholder
+          }
+        } else if (node.nodeType === 1) { // Element node
+          // Keep all attributes and process child nodes
+          Array.from(node.childNodes).forEach(processTextNodes)
+        }
+      }
+      Array.from(element.childNodes as NodeListOf<Node>).forEach(processTextNodes)
+    }
+    return
+  }
+
   // Process child elements
-  Array.from(element.children).forEach(child => {
+  Array.from<Element>(element.children).forEach(child => {
     processElement(child, textMap, excludedSelectors, nextDataContent)
+  })
+
+  // Process direct text nodes if we haven't handled them as a unit
+  Array.from(element.childNodes as NodeListOf<Node>).forEach(node => {
+    if (node.nodeType === 3) { // Text node
+      const text = (node as Text).data
+      if (text.trim()) {  // Keep trim() for the check
+        const placeholder = generatePlaceholder(text)
+        textMap[placeholder] = text  // Store original text with spacing
+        ;(node as Text).data = (node as Text).data.replace(text, placeholder)
+      }
+    }
   })
 }
 
@@ -199,7 +225,6 @@ export async function extractStrings(
   config: Configuration
 ): Promise<ExtractionResult> {
   const excludedBlocks = config?.excludedTranslationBlocks || []
-  const maxBlockSize = config?.maxBlockSize || MAX_BLOCK_SIZE
   
   // Pre-process __NEXT_DATA__ script to handle JSON content
   const nextDataMatch = html.match(/<script id="__NEXT_DATA__">([\s\S]*?)<\/script>/)
@@ -230,8 +255,15 @@ export async function extractStrings(
     }
   })
   
-  // Start processing from the document body
-  processElement(doc.documentElement, textMap, excludedSelectors, nextDataContent)
+  // Start processing from the root div
+  const rootDiv = doc.getElementById('frenglish-root')
+  if (rootDiv) {
+    processElement(rootDiv, textMap, excludedSelectors, nextDataContent)
+    return {
+      textMap,
+      modifiedHtml: rootDiv.innerHTML
+    }
+  }
   
   return {
     textMap,
@@ -278,19 +310,22 @@ export function generatePlaceholder(original: string): string {
 * Creates a document that works in both browser and Node.js environments
 */
 export async function createDocument(html: string): Promise<Document> {
+  // Wrap the HTML in a div to preserve the original structure
+  const wrappedHtml = `<div id="frenglish-root">${html}</div>`
+  
   if (typeof window !== 'undefined' && window.document) {
     // Browser environment
     const parser = new DOMParser()
-    return parser.parseFromString(html, 'text/html')
+    const doc = parser.parseFromString(wrappedHtml, 'text/html')
+    // Return the original content without the wrapper
+    return doc
   }
   
   // For Node.js environment, dynamically import JSDOM 
-  // This ensures the code works in browsers without trying to load JSDOM
   try {
-    // Use dynamic import to avoid bundling JSDOM in browser builds
     const jsdomModule = await import('jsdom')
     const { JSDOM } = jsdomModule
-    const dom = new JSDOM(html)
+    const dom = new JSDOM(wrappedHtml)
     return dom.window.document
   } catch (error) {
     throw new Error('No DOM parser available: ' + (error instanceof Error ? error.message : 'Unknown error'))
