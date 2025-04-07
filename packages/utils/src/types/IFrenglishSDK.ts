@@ -13,7 +13,7 @@ export interface IFrenglishSDK {
     content: string,
     lang: string,
     partialConfig?: PartialConfiguration
-  ): Promise<string | undefined>;
+  ): Promise<string | string[] | undefined>;
 
   getTextMap(): Promise<File | null>;
 
