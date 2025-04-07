@@ -1,15 +1,21 @@
 {
     "name": "@frenglish/utils",
-    "version": "1.0.2",
+    "version": "1.0.3",
     "description": "Utils for Frenglish translation service",
     "type": "module",
     "main": "dist/index.js",
     "module": "dist/index.js",
     "types": "dist/index.d.ts",
+    "browser": "dist/browser.js",
     "exports": {
         ".": {
             "import": "./dist/index.js",
+            "browser": "./dist/browser.js",
             "types": "./dist/index.d.ts"
+        },
+        "./browser": {
+            "import": "./dist/browser.js",
+            "types": "./dist/browser.d.ts"
         }
     },
     "scripts": {
@@ -25,18 +31,23 @@
     "author": "viv-cheung",
     "license": "MIT",
     "devDependencies": {
+        "@types/crypto-js": "^4.2.2",
         "@types/jest": "^27.0.0",
+        "@types/jsdom": "^21.1.6",
         "@types/minimatch": "^5.1.2",
         "@types/node": "^22.5.4",
+        "happy-dom": "^16.8.1",
         "jest": "^27.0.0",
         "ts-jest": "^27.0.0",
         "typescript": "^5.8.2"
     },
     "dependencies": {
         "chalk": "^5.4.1",
+        "crypto-js": "^4.2.0",
         "dotenv": "^16.4.5",
         "glob": "^8.0.3",
         "glob-promise": "^6.0.7",
+        "jsdom": "^24.0.0",
         "minimatch": "^10.0.1"
     },
     "files": [

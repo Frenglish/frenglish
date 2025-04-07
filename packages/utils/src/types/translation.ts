@@ -26,7 +26,12 @@ export enum TranslationStatus {
     QUEUED = 'QUEUED',
     PROCESSING = 'PROCESSING',
     COMPLETED = 'COMPLETED',
-  }
+}
+
+export interface ExtractionResult {
+    modifiedHtml: string
+    textMap: { [placeholder: string]: string }
+}
 
 /**
  * Represents a file with its content and language metadata for translation.
