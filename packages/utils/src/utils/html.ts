@@ -35,6 +35,11 @@ const BLOCK_LEVEL_TAGS = [
   'h4',
   'h5',
   'h6',
+  'caption',
+  'figcaption',
+  'address',
+  'summary',
+  'li',
 ]
   
 /**
