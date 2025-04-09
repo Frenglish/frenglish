@@ -30,6 +30,7 @@ export const TRANSLATABLE_ATTRIBUTES = [
 ]
   
 const DEFAULT_EXCLUDED_SELECTORS = ['.no-translate']
+const DATAKEY = 'data-frenglish-key'
   
 /**
  * Block-level tags to treat as a single placeholder if they don't contain <code> or <pre>.
@@ -44,7 +45,7 @@ const DEFAULT_EXCLUDED_SELECTORS = ['.no-translate']
  *  - Also handles attributes, <meta content>, data-*, etc.
  */
 export async function extractStrings(
-  html: string,
+  htmlOrDoc: string | Document,
   config: Configuration
 ): Promise<ExtractionResult> {
   const excludedBlocks = config?.excludedTranslationBlocks || []
@@ -62,8 +63,10 @@ export async function extractStrings(
     }
   })
 
-  // Create a document from the HTML string
-  const doc = await createDocument(html)
+  // Create a document from the HTML string or use document object
+  const doc = typeof htmlOrDoc === 'string'
+  ? await createDocument(htmlOrDoc)
+  : htmlOrDoc;
 
   // Process all elements in the document
   const elements = doc.querySelectorAll('*')
@@ -71,8 +74,8 @@ export async function extractStrings(
     const tagName = element.tagName.toLowerCase()
     const inputType = element.getAttribute('type')?.toLowerCase() || ''
 
-    // Skip processing if this element matches any excluded selector
-    if (excludedSelectors.length > 0 && excludedSelectors.some(selector => element.matches(selector))) {
+    // Skip processing if this element matches any excluded selector or has data-frenglish-key
+    if ((excludedSelectors.length > 0 && excludedSelectors.some(selector => element.matches(selector))) || element.getAttribute(DATAKEY)) {
       continue
     }
 
@@ -112,25 +115,34 @@ export async function extractStrings(
           return
         }
 
-        const fullText = textNode.data || ''
-        const leadingMatch = fullText.match(/^\s*/)
-        const trailingMatch = fullText.match(/\s*$/)
-        const leadingSpace = leadingMatch ? leadingMatch[0] : ''
-        const trailingSpace = trailingMatch ? trailingMatch[0] : ''
+        // Extract spaces from text
+        const { middleText } = extractSpacing(textNode.data);
 
-        const middleText = fullText.slice(
-          leadingSpace.length,
-          fullText.length - trailingSpace.length
-        )
+        // If there’s nothing but whitespace, skip
+        if (!middleText.trim()) return;
 
-        if (middleText.trim() !== '') {
-          // // Always decode HTML entities to their actual characters
-          // const decodedText = await decodeHtmlEntities(middleText)
-          const placeholder = generatePlaceholder(middleText)
-          textMap[placeholder] = middleText
-          const newText = leadingSpace + placeholder + trailingSpace
-          textNode.data = newText
+        // Generate a hash for the middle text
+        const placeholder = generatePlaceholder(middleText)
+
+        // Return early if a parent element already has a data-frenglish-key
+        const existingDataKey = parentElement?.getAttribute(DATAKEY);
+        if (existingDataKey) return
+
+        // Store the text to translate in the textMap
+        textMap[placeholder] = middleText
+
+
+        // Skip wrapping if parent is a TITLE tag since it can't contain spans
+        if (parentElement?.tagName.toLowerCase() === 'title') {
+          return
         }
+
+        // Create a span element with the data key
+        const span = doc.createElement('span')
+        span.setAttribute(DATAKEY, placeholder);
+        span.textContent = textNode.data
+        textNode.parentNode?.replaceChild(span, textNode)
+        
       }
     })
 
@@ -204,6 +216,26 @@ export async function extractStrings(
     textMap,
   }
 }
+
+
+  // Utility function to separate leading/trailing whitespace.
+  function extractSpacing(fullText: string) {
+    // Match leading spaces
+    const leadingMatch = fullText.match(/^\s*/);
+    // Match trailing spaces
+    const trailingMatch = fullText.match(/\s*$/);
+
+    const leadingSpace = leadingMatch ? leadingMatch[0] : '';
+    const trailingSpace = trailingMatch ? trailingMatch[0] : '';
+
+    // Middle text is everything else
+    const middleText = fullText.slice(
+      leadingSpace.length,
+      fullText.length - trailingSpace.length
+    );
+
+    return { leadingSpace, middleText, trailingSpace };
+  }
   
 /**
  * Processes Next.js JSON data for translation.
