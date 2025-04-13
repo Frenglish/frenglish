@@ -15,6 +15,7 @@ if (typeof window === 'undefined') {
 export const TRANSLATABLE_ATTRIBUTES = [
   'alt',
   'title',
+  'description',
   'placeholder',
   'aria-label',
   'aria-labelledby',
