@@ -2,6 +2,7 @@ import { Configuration } from '@/types/configuration'
 import pkg from 'crypto-js'
 const { SHA256 } = pkg
 import { ExtractionResult } from '@/types/translation'
+import { extractTextComponents } from './utils.js'
 
 // Polyfill Node constants for Node.js environment
 if (typeof window === 'undefined') {
@@ -113,16 +114,7 @@ export async function extractStrings(
           return
         }
 
-        const fullText = textNode.data || ''
-        const leadingMatch = fullText.match(/^\s*/)
-        const trailingMatch = fullText.match(/\s*$/)
-        const leadingSpace = leadingMatch ? leadingMatch[0] : ''
-        const trailingSpace = trailingMatch ? trailingMatch[0] : ''
-
-        const middleText = fullText.slice(
-          leadingSpace.length,
-          fullText.length - trailingSpace.length
-        )
+        const { leadingSpace, middleText, trailingSpace } = extractTextComponents(textNode.data || '')
 
         if (middleText.trim() !== '') {
           // // Always decode HTML entities to their actual characters

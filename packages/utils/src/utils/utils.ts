@@ -111,3 +111,31 @@ export async function getRelativePath(basePath: string, filePath: string, suppor
 
   return result || undefined
 }
+
+
+/**
+ * Extracts the leading space, middle text, and trailing space from a text string.
+ * @param text - The text string to process
+ * @returns An object containing the leading space, middle text, and trailing space
+ */
+export function extractTextComponents(text: string): {
+  leadingSpace: string;
+  middleText: string;
+  trailingSpace: string;
+} {
+  const leadingMatch = text.match(/^\s*/)
+  const trailingMatch = text.match(/\s*$/)
+  const leadingSpace = leadingMatch ? leadingMatch[0] : ''
+  const trailingSpace = trailingMatch ? trailingMatch[0] : ''
+
+  const middleText = text.slice(
+    leadingSpace.length,
+    text.length - trailingSpace.length
+  )
+
+  return {
+    leadingSpace,
+    middleText,
+    trailingSpace
+  }
+}
