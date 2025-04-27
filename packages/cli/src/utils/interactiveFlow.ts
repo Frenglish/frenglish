@@ -526,7 +526,7 @@ async function runTranslationWizard(config: any, selectedProject: Project) {
         localConfig.TRANSLATION_PATH || config.TRANSLATION_PATH,
         isFullTranslation,
         config,
-        localConfig.EXCLUDED_TRANSLATION_PATH ? JSON.parse(localConfig.EXCLUDED_TRANSLATION_PATH) : []
+        localConfig.EXCLUDED_TRANSLATION_PATH
       );
 
       clearInterval(interval);

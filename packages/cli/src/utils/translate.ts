@@ -18,14 +18,9 @@ dotenv.config({ path: path.join(process.cwd(), '.env') })
 
 // Load local config first, then fall back to environment variables
 const localConfig = loadLocalConfig()
-const TRANSLATION_PATH = localConfig.TRANSLATION_PATH || process.env.TRANSLATION_PATH!
-const EXCLUDED_TRANSLATION_PATH = localConfig.EXCLUDED_TRANSLATION_PATH || 
-  (process.env.EXCLUDED_TRANSLATION_PATH
-    ? JSON.parse(process.env.EXCLUDED_TRANSLATION_PATH.replace(/'/g, '"'))
-    : [])
-const TRANSLATION_OUTPUT_PATH = localConfig.TRANSLATION_OUTPUT_PATH || 
-  process.env.TRANSLATION_OUTPUT_PATH || 
-  TRANSLATION_PATH
+const TRANSLATION_PATH = localConfig.TRANSLATION_PATH
+const EXCLUDED_TRANSLATION_PATH = localConfig.EXCLUDED_TRANSLATION_PATH
+const TRANSLATION_OUTPUT_PATH = localConfig.TRANSLATION_OUTPUT_PATH || TRANSLATION_PATH
 
 /**
  * Recursively finds all files in a directory that match the supported file types
@@ -154,8 +149,12 @@ export async function translate(
           partialConfig
         )
 
-        if (translationResponse?.content) {
-          for (const languageData of translationResponse.content) {
+        // Also get all outdated files that a user may have modified the translation for
+        const outdatedFileResponse = await frenglish.getOutdatedFiles()
+        const allTranslationResponses = [...translationResponse.content, ...outdatedFileResponse]
+
+        if (allTranslationResponses) {
+          for (const languageData of allTranslationResponses) {
             // Create language-specific output directory
             const languageOutputDir = path.join(TRANSLATION_OUTPUT_PATH, languageData.language)
             await fs.mkdir(languageOutputDir, { recursive: true })

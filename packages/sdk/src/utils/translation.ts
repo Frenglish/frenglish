@@ -247,3 +247,19 @@ export async function upload(files: FileContentWithLanguage[], apiKey: string): 
     errorContext: 'Failed to upload files',
   })
 }
+
+/**
+ * Retrieves the list of outdated files for a given project.
+ *
+ * @param {string} apiKey - The API key for authentication.
+ * @returns {Promise<TranslationResponse[]>} A promise that resolves to an array of translation responses.
+ * @throws If the request fails or the API responds with an error.
+ */
+export async function getOutdatedFiles(apiKey: string): Promise<TranslationResponse[]> {
+  return apiRequest('/api/translation/fetch-outdated-files', {
+    body: {
+      apiKey,
+    },
+    errorContext: 'Failed to get outdated files',
+  })
+}

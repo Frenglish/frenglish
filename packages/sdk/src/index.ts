@@ -8,6 +8,7 @@ import {
   getTextMap as getTextMapUtil,
   getSupportedFileTypes as getSupportedFileTypesUtil,
   getSupportedLanguages as getSupportedLanguagesUtil,
+  getOutdatedFiles as getOutdatedFilesUtil
 } from './utils/translation.js'
 import {
   getDefaultConfiguration as getDefaultConfigurationUtil,
@@ -181,6 +182,15 @@ export interface FrenglishSDK {
   getSupportedLanguages(): Promise<string[]>;
 
   /**
+   * Retrieves the list of outdated files for a given project.
+   *
+   * @param apiKey - The API key for authentication.
+   * @returns {Promise<TranslationResponse[]>} A promise that resolves to an array of translation responses.
+   * @throws If the request fails or the API responds with an error.
+   */
+  getOutdatedFiles(): Promise<TranslationResponse[]>;
+
+  /**
    * Updates the configuration for a project.
    *
    * @param partiallyUpdatedConfig - The configuration updates to apply
@@ -256,6 +266,10 @@ export function FrenglishSDK(apiKey: string): FrenglishSDK {
 
     getDefaultConfiguration: async () => {
       return getDefaultConfigurationUtil(apiKey)
+    },
+
+    getOutdatedFiles: async () => {
+      return getOutdatedFilesUtil(apiKey)
     },
 
     getProjectSupportedLanguages: async () => {
