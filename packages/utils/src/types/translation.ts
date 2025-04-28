@@ -45,7 +45,6 @@ export interface FileContentWithLanguage {
   language: string;
 }
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 export interface FlatJSON {
     path: string[] // Array of keys for giving value in json
     translationComment?: string // Optional translation comment for the value

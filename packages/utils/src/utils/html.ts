@@ -30,14 +30,13 @@ export const TRANSLATABLE_ATTRIBUTES = [
   // 'content' in <meta> tags handled contextually
   // data-* attributes handled contextually
 ]
-  
+
 const DEFAULT_EXCLUDED_SELECTORS = ['.no-translate']
-  
+
 /**
  * Block-level tags to treat as a single placeholder if they don't contain <code> or <pre>.
  */
 
-  
 /**
  * EXTRACT PHASE
  *  - Skips <code>/<pre> text
@@ -47,13 +46,14 @@ const DEFAULT_EXCLUDED_SELECTORS = ['.no-translate']
  */
 export async function extractStrings(
   html: string,
-  config: Configuration
+  config: Configuration,
+  injectPlaceholders = true // Whether to inject placeholders in text node
 ): Promise<ExtractionResult> {
   const excludedBlocks = config?.excludedTranslationBlocks || []
   const textMap: { [placeholder: string]: string } = {}
 
-  // Create a list of all excluded selectors, starting with default ones
-  const excludedSelectors: string[] = DEFAULT_EXCLUDED_SELECTORS
+  // Create a copy of default excluded selectors.
+  const excludedSelectors: string[] = [...DEFAULT_EXCLUDED_SELECTORS]
   excludedBlocks.forEach(blockConfig => {
     if (blockConfig.blocks && blockConfig.blocks.length > 0) {
       blockConfig.blocks.forEach(block => {
@@ -64,21 +64,26 @@ export async function extractStrings(
     }
   })
 
-  // Create a document from the HTML string
+  // Create a document from the HTML string.
   const doc = await createDocument(html)
 
-  // Process all elements in the document
+  // Process all elements in the document.
   const elements = doc.querySelectorAll('*')
   for (const element of elements) {
     const tagName = element.tagName.toLowerCase()
     const inputType = element.getAttribute('type')?.toLowerCase() || ''
 
-    // Skip processing if this element matches any excluded selector
+    // Skip if the element or an ancestor already has the marker.
+    if (element.hasAttribute('data-frenglish-key')) {
+      continue;
+    }
+
+    // Skip elements that match any excluded selector.
     if (excludedSelectors.length > 0 && excludedSelectors.some(selector => element.matches(selector))) {
       continue
     }
 
-    // Special handling for __NEXT_DATA__ in script tags
+    // Special handling for __NEXT_DATA__ in <script> tags.
     if (tagName === 'script' && element.id === '__NEXT_DATA__') {
       const scriptContent = element.textContent || ''
       try {
@@ -93,53 +98,59 @@ export async function extractStrings(
       continue
     }
 
-    // Handle text nodes
-    Array.from(element.childNodes).forEach(async node => {
+    // ----- Process Text Nodes -----
+    // Replace text nodes by wrapping them in a span marked with data-frenglish-key.
+    Array.from(element.childNodes).forEach(node => {
       if (node.nodeType === Node.TEXT_NODE) {
         const textNode = node as Text
         const parentElement = textNode.parentElement
-
-        // Skip text nodes inside <style> or <script> tags
-        if (parentElement?.tagName.toLowerCase() === 'style' || parentElement?.tagName.toLowerCase() === 'script') {
+        // Skip text nodes inside <style> or <script> tags.
+        if (
+          parentElement?.tagName.toLowerCase() === 'style' ||
+          parentElement?.tagName.toLowerCase() === 'script' ||
+          parentElement?.closest('code, pre')
+        ) {
           return
         }
 
-        // Also skip text nodes that are inside <code> or <pre>
-        if (parentElement?.closest('code, pre')) {
-          return
-        }
-
-        // Skip text nodes if their parent element matches any excluded selector
+        // Skip if the parent element matches any excluded selector.
         if (excludedSelectors.length > 0 && excludedSelectors.some(selector => parentElement?.matches(selector))) {
           return
         }
-
-        const { leadingSpace, middleText, trailingSpace } = extractTextComponents(textNode.data || '')
-
+        const { leadingSpace, middleText, trailingSpace} = extractTextComponents(textNode.data || '')
         if (middleText.trim() !== '') {
-          // // Always decode HTML entities to their actual characters
-          // const decodedText = await decodeHtmlEntities(middleText)
+          // Generate placeholder
           const placeholder = generatePlaceholder(middleText)
           textMap[placeholder] = middleText
-          const newText = leadingSpace + placeholder + trailingSpace
-          textNode.data = newText
+
+          // Inject data-key
+          const span = doc.createElement('span')
+          span.setAttribute('data-frenglish-key', placeholder)
+
+          // Inject placeholder if needed
+          const fullText = leadingSpace + (injectPlaceholders ? placeholder : middleText) + trailingSpace
+          span.innerHTML = fullText
+          textNode.parentNode?.replaceChild(span, textNode)
         }
       }
     })
 
-    // Process standard translatable attributes
+    // ----- Process Translatable Attributes -----
+    // For standard translatable attributes, do not modify the attribute value;
+    // instead, mark the element by adding the universal data-frenglish-key.
     for (const attrName of TRANSLATABLE_ATTRIBUTES) {
       const attrValue = element.getAttribute(attrName)
       if (attrValue && attrValue !== '') {
-        // Always decode HTML entities to their actual characters
-        //const decodedText = await decodeHtmlEntities(attrValue)
         const placeholder = generatePlaceholder(attrValue)
         textMap[placeholder] = attrValue.trim()
-        element.setAttribute(attrName, placeholder)
+        element.setAttribute('data-frenglish-key', placeholder)
+        if (injectPlaceholders) {
+          element.setAttribute(attrName, placeholder)
+        }
       }
     }
 
-    // Context-sensitive handling for 'value' attribute
+    // ----- Process the 'value' Attribute for Buttons, Options, and Certain Inputs -----
     const valueAttr = element.getAttribute('value')
     if (valueAttr) {
       if (
@@ -147,57 +158,55 @@ export async function extractStrings(
         tagName === 'option' ||
         (tagName === 'input' && ['button', 'submit', 'reset'].includes(inputType))
       ) {
-        // Always decode HTML entities to their actual characters
-        //const decodedText = await decodeHtmlEntities(valueAttr)
         const placeholder = generatePlaceholder(valueAttr)
         textMap[placeholder] = valueAttr.trim()
-        element.setAttribute('value', placeholder)
-      }
-    }
-
-    // Context-sensitive handling for 'content' attribute in <meta> tags
-    if (tagName === 'meta') {
-      const contentAttr = element.getAttribute('content')
-      if (contentAttr) {
-        const metaName = (element.getAttribute('name') || '').toLowerCase()
-        if (
-          ['description', 'keywords', 'author', 'og:title', 'og:description'].includes(metaName)
-        ) {
-          // Always decode HTML entities to their actual characters
-          // const decodedText = await decodeHtmlEntities(contentAttr)
-          const placeholder = generatePlaceholder(contentAttr)
-          textMap[placeholder] = contentAttr.trim()
-          element.setAttribute('content', placeholder)
+        element.setAttribute('data-frenglish-key', placeholder)
+        if (injectPlaceholders) {
+          element.setAttribute('value', placeholder)
         }
       }
     }
 
-    // Handle data-* attributes that should be translated
+    // ----- Process the 'content' Attribute in <meta> Tags -----
+    if (tagName === 'meta') {
+      const contentAttr = element.getAttribute('content')
+      if (contentAttr) {
+        const metaName = (element.getAttribute('name') || '').toLowerCase()
+        if (['description', 'keywords', 'author', 'og:title', 'og:description'].includes(metaName)) {
+          const placeholder = generatePlaceholder(contentAttr)
+          textMap[placeholder] = contentAttr.trim()
+          element.setAttribute('data-frenglish-key', placeholder)
+          if (injectPlaceholders) {
+            element.setAttribute('content', placeholder)
+          }
+        }
+      }
+    }
+
+    // ----- Process Data-* Attributes (e.g. data-tooltip, data-title) -----
     const dataAttributes = Array.from(element.attributes)
       .filter(attr => attr.name.startsWith('data-'))
       .filter(attr => ['data-tooltip', 'data-title'].includes(attr.name))
-
     for (const attr of dataAttributes) {
       const attrValue = attr.value
       if (attrValue && attrValue !== '') {
-        // Always decode HTML entities to their actual characters
-       //const decodedText = await decodeHtmlEntities(attrValue)
         const placeholder = generatePlaceholder(attrValue)
         textMap[placeholder] = attrValue.trim()
-        element.setAttribute(attr.name, placeholder)
+        element.setAttribute('data-frenglish-key', placeholder)
+        if (injectPlaceholders) {
+          element.setAttribute(attr.name, placeholder)
+        }
       }
     }
   }
 
-  // Get the modified HTML
   const modifiedHtml = doc.documentElement.outerHTML
-
   return {
     modifiedHtml,
     textMap,
   }
 }
-  
+
 /**
  * Processes Next.js JSON data for translation.
  */
@@ -222,7 +231,7 @@ function processNextDataValue(
   }
   return value
 }
-  
+
 /**
  * Generates a unique placeholder based on the original text.
  * @param original - The original text.
@@ -232,17 +241,20 @@ export function generatePlaceholder(original: string): string {
   const key = SHA256(original.trim()).toString()
   return `${key}`
 }
-  
+
 /**
 * Creates a document that works in both browser and Node.js environments
 */
 export async function createDocument(html: string): Promise<Document> {
-  if (typeof window !== 'undefined' && window.document) {
+  if (
+    typeof window !== 'undefined' 
+    && window.document 
+    && !(globalThis as any).IS_UNIT_TEST)
+  {
     // Browser environment
-    const parser = new DOMParser()
-    return parser.parseFromString(html, 'text/html')
+    return window.document
   }
-  
+
   // Node.js environment
   try {
     const jsdomModule = await import('jsdom')
