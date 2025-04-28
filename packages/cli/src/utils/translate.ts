@@ -121,7 +121,7 @@ export async function translate(
 
     // Get relative paths for all files
     const fileIDs = filteredFiles.map(file =>
-      path.relative(customPath, file)
+      path.relative(process.cwd(), file)
     )
 
     const contents = fileContents.map((file) => file.content)
