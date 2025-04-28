@@ -75,7 +75,7 @@ export async function extractStrings(
 
     // Skip if the element or an ancestor already has the marker.
     if (element.hasAttribute('data-frenglish-key')) {
-      continue;
+      continue
     }
 
     // Skip elements that match any excluded selector.
@@ -247,8 +247,8 @@ export function generatePlaceholder(original: string): string {
 */
 export async function createDocument(html: string): Promise<Document> {
   if (
-    typeof window !== 'undefined' 
-    && window.document 
+    typeof window !== 'undefined'
+    && window.document
     && !(globalThis as any).IS_UNIT_TEST)
   {
     // Browser environment
