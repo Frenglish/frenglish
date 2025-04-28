@@ -1,6 +1,5 @@
 import { FRENGLISH_BACKEND_URL } from '@frenglish/utils'
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 export async function apiRequest<T>(
   endpoint: string,
   options?: {

@@ -1,12 +1,16 @@
-import * as tseslint from "typescript-eslint"
-import prettier from "eslint-config-prettier"
-import enforceNoLocalhost from './.eslint/rules/enforce-no-localhost.js'
+import pluginJs from "@eslint/js"
+import tseslint from "typescript-eslint"
+import prettierConfig from "eslint-config-prettier"
+import enforceNoLocalhost from "./.eslint/rules/enforce-no-localhost.js"
 
 export default [
+  // Recommended ESLint rules for JS and TypeScript.
+  pluginJs.configs.recommended,
+  ...tseslint.configs.recommended,
   {
     languageOptions: {
+      // Define Node.js globals and others.
       globals: {
-        // Define Node.js globals
         process: true,
         console: true,
         module: true,
@@ -50,31 +54,30 @@ export default [
         Function: true,
         String: true,
         Number: true,
-        Symbol: true,
+        Symbol: true
       },
       parserOptions: {
-        ecmaVersion: 'latest',
-        sourceType: 'module',
+        ecmaVersion: "latest",
+        sourceType: "module"
       }
     },
     plugins: {
       custom: {
         rules: {
-          'enforce-no-localhost': enforceNoLocalhost
+          "enforce-no-localhost": enforceNoLocalhost
         }
       }
     },
     rules: {
+      ...prettierConfig.rules,
       "no-console": "off",
-      '@typescript-eslint/no-require-imports': "warn",
+      "@typescript-eslint/no-require-imports": "warn",
       "@typescript-eslint/no-explicit-any": "off",
       "no-trailing-spaces": "error",
-      "no-multiple-empty-lines": ["error", { "max": 1, "maxEOF": 0 }],
-      "semi": ["error", "never"],
-      "indent": ["error", 2],
-      "custom/enforce-no-localhost": "error",
-      ...prettier.rules
+      "no-multiple-empty-lines": ["error", { max: 1, maxEOF: 0 }],
+      semi: ["error", "never"],
+      indent: ["error", 2],
+      "custom/enforce-no-localhost": "error"
     }
-  },
-  ...tseslint.configs.recommended
+  }
 ]

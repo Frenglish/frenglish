@@ -15,9 +15,9 @@ export interface Project {
     integrationType: string
     includedUrlPaths?: string[]
     excludedUrlPaths?: string[]
-  } 
+  }
 
-  export interface WordpressConfig {
+export interface WordpressConfig {
     websiteIntegrationType: 'wordpress';
     apiKey: string;
   }
@@ -26,7 +26,7 @@ export interface ProjectResponse {
     project: Project;
 }
 
-  export interface DefaultWebsiteConfig {
+export interface DefaultWebsiteConfig {
     websiteIntegrationType: 'nextjs' | 'webflow' | 'squarespace' | 'salesforce';
     isTXT1DNSValidated: boolean;
     isTXT2DNSValidated: boolean;

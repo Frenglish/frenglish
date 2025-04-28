@@ -19,12 +19,12 @@ import { loadLocalConfig } from './utils/localFrenglishConfig.js'
 // Load environment variables from .env file in current working directory
 dotenv.config({ path: path.join(process.cwd(), '.env') })
 
-const frenglishConfig = loadLocalConfig();
+const frenglishConfig = loadLocalConfig()
 
-const highlight = chalk.yellow;
-const commandColor = chalk.green;
-const commentColor = chalk.gray;
-const optionColor = chalk.cyan;
+const highlight = chalk.yellow
+const commandColor = chalk.green
+const commentColor = chalk.gray
+const optionColor = chalk.cyan
 
 yargs(hideBin(process.argv))
   .scriptName('frenglish')
@@ -60,10 +60,10 @@ yargs(hideBin(process.argv))
           type: 'string',
           description: commentColor('Partial config as JSON string or file path'),
           coerce: (arg) => {
-            if (!arg) return undefined;
-            try { return JSON.parse(arg); } catch {
-              try { return JSON.parse(fs.readFileSync(arg, 'utf8')); } catch {
-                throw new Error(`Invalid partialConfig: ${arg}`);
+            if (!arg) return undefined
+            try { return JSON.parse(arg) } catch {
+              try { return JSON.parse(fs.readFileSync(arg, 'utf8')) } catch {
+                throw new Error(`Invalid partialConfig: ${arg}`)
               }
             }
           },
@@ -84,7 +84,7 @@ yargs(hideBin(process.argv))
   .showHelpOnFail(true)
   .example(
     `${commandColor('frenglish translate ') + optionColor(' ')}`,
-     commentColor('Translate files using default path from .env (TRANSLATION_PATH)')
+    commentColor('Translate files using default path from .env (TRANSLATION_PATH)')
   )
   .example(
     `${commandColor('frenglish translate ') + optionColor('--path ./custom/path')}`,
@@ -106,4 +106,4 @@ yargs(hideBin(process.argv))
     `${commandColor('frenglish translate ') + optionColor('--partialConfig="./config.json"')}`,
     commentColor('Translate files using a JSON configuration file')
   )
-  .parse();
+  .parse()

@@ -5,4 +5,4 @@ export * from './types/translation.js'
 export * from './types/configuration.js'
 
 // Export only browser-compatible utils
-export * from './utils/html.js' 
+export * from './utils/html.js'

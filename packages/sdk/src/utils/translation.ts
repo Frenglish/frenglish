@@ -128,9 +128,9 @@ export async function translateString(
   })
 
   const translationContent = await pollForTranslation(data.translationId, apiKey)
-  
+
   // Process all translations and files
-  const allTranslations = translationContent.flatMap(translation => 
+  const allTranslations = translationContent.flatMap(translation =>
     translation.files.map(file => {
       if (!file.content) return []
       try {

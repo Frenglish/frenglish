@@ -1,5 +1,5 @@
-import figlet from 'figlet';
-import chalk from 'chalk';
+import figlet from 'figlet'
+import chalk from 'chalk'
 
 /**
  * Print a colorful ASCII banner with optional file list below it.
@@ -18,25 +18,25 @@ export function printFrenglishBanner(
   const bannerLines = figlet.textSync(mainText, {
     font,
     horizontalLayout: 'default',
-  }).split('\n');
+  }).split('\n')
 
-  const colors = [chalk.magenta, chalk.cyan, chalk.blueBright, chalk.greenBright];
+  const colors = [chalk.magenta, chalk.cyan, chalk.blueBright, chalk.greenBright]
 
-  console.log('\n');
+  console.log('\n')
   bannerLines.forEach((line, i) => {
-    const color = colors[i % colors.length];
-    console.log(color(line));
-  });
+    const color = colors[i % colors.length]
+    console.log(color(line))
+  })
 
   if (subtitle) {
-    console.log(chalk.yellowBright(`\n${subtitle}\n`));
+    console.log(chalk.yellowBright(`\n${subtitle}\n`))
   }
 
   if (files.length > 0) {
-    console.log(chalk.cyanBright(`📁 Files to translate (${files.length}):\n`));
+    console.log(chalk.cyanBright(`📁 Files to translate (${files.length}):\n`))
     files.forEach((file) => {
-      console.log('  ' + chalk.gray('•'), chalk.white(file));
-    });
-    console.log();
+      console.log('  ' + chalk.gray('•'), chalk.white(file))
+    })
+    console.log()
   }
 }

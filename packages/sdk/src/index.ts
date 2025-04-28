@@ -39,7 +39,7 @@ import {
  *   - teams: Array of all teams the user is part of
  * @throws {Error} If the request fails or the API responds with an error.
  */
-export const getUserProjects = getUserProjectsUtil;
+export const getUserProjects = getUserProjectsUtil
 
 /**
  * Creates a new project.
@@ -50,7 +50,7 @@ export const getUserProjects = getUserProjectsUtil;
  * @returns {Promise<Project>} A promise that resolves to the created project
  * @throws {Error} If the request fails or the API responds with an error.
  */
-export const createProject = createProjectUtil;
+export const createProject = createProjectUtil
 
 // Export types
 export type {
@@ -61,7 +61,7 @@ export type {
   FileContentWithLanguage,
   TranslationResponse,
   TranslationStatus
-};
+}
 
 /**
  * Interface defining all methods available in the Frenglish SDK.
@@ -315,4 +315,4 @@ export function FrenglishSDK(apiKey: string): FrenglishSDK {
 }
 
 // Export as default for backward compatibility
-export default FrenglishSDK;
+export default FrenglishSDK

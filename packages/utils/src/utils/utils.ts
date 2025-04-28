@@ -112,7 +112,6 @@ export async function getRelativePath(basePath: string, filePath: string, suppor
   return result || undefined
 }
 
-
 /**
  * Extracts the leading space, middle text, and trailing space from a text string.
  * @param text - The text string to process

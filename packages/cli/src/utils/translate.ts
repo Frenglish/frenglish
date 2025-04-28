@@ -41,7 +41,7 @@ async function findFilesRecursively(
 
   for (const entry of entries) {
     const fullPath = path.join(dir, entry.name)
-    
+
     // Skip system files and excluded paths
     if (systemFiles.includes(entry.name) || excludePath.some(excluded => fullPath.includes(excluded))) {
       continue
@@ -120,13 +120,13 @@ export async function translate(
     }
 
     // Get relative paths for all files
-    const fileIDs = filteredFiles.map(file => 
+    const fileIDs = filteredFiles.map(file =>
       path.relative(customPath, file)
     )
 
     const contents = fileContents.map((file) => file.content)
 
-    printFrenglishBanner('Frenglish.ai', '🌍 TRANSLATE - Localized. Simplified.', fileIDs);
+    printFrenglishBanner('Frenglish.ai', '🌍 TRANSLATE - Localized. Simplified.', fileIDs)
 
     // Group files by type for separate processing
     const filesByType = fileIDs.reduce((acc, fileId, index) => {
@@ -141,7 +141,7 @@ export async function translate(
 
     // Process each file type separately
     for (const [fileType, files] of Object.entries(filesByType)) {
-      try {        
+      try {
         const translationResponse = await frenglish.translate(
           files.contents,
           isFullTranslation,
