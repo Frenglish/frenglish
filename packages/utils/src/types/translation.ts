@@ -28,22 +28,6 @@ export enum TranslationStatus {
     COMPLETED = 'COMPLETED',
 }
 
-export interface ExtractionResult {
-    modifiedHtml: string
-    textMap: { [placeholder: string]: string }
-    stringsWithContext: ExtractedStringWithContext[] | undefined;
-}
-
-export interface ExtractedStringWithContext {
-    hash: string;
-    text: string;
-    selector?: string;
-    attribute?: string;
-    isHtmlBlock?: boolean;
-    isTextNode?: boolean;
-    isCompressedStructure?: boolean;
-}
-
 /**
  * Represents a file with its content and language metadata for translation.
  */
