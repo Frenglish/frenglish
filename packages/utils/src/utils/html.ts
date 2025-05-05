@@ -30,7 +30,7 @@ export const TRANSLATABLE_ATTRIBUTES = [
 const COLLAPSIBLE_TAGS = [
   'p', 'li', 'dt', 'dd', 'caption',
   'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-  'legend', 'summary', 'th', 'td'
+  'legend', 'summary', 'th', 'td', 'div'
 ];
 
 // const INLINE_TAGS = new Set([
@@ -41,8 +41,8 @@ const COLLAPSIBLE_TAGS = [
 
 const SKIPPED_TAGS = new Set(['script', 'style', 'noscript', 'code', 'pre', 'template', 'svg']);
 
-const HEAVY_LEAF_SELECTOR = 'script, style, iframe, video, audio, object, embed, canvas, noscript, svg, table, ul, ol, dl, div:not(:empty)';
-
+const HEAVY_LEAF_SELECTOR = 'script, style, iframe, video, audio, object, embed, canvas, noscript, svg, ' +
+  'table, ul, ol, dl, div:not(:empty), ' + COLLAPSIBLE_TAGS.join(', ')
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
