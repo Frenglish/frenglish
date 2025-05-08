@@ -24,7 +24,7 @@ export const pollForTranslation = async (
   translationId: number,
   apiKey: string,
   pollingInterval: number = 2000,  // Default 2 seconds
-  maxPollingTime: number = 1800000 // Default 30 minutes (1800 * 1000 ms)
+  maxPollingTime: number = 3600000 // Default 60 minutes (3600 * 1000 ms)
 ): Promise<TranslationResponse[]> => {
   const startTime = Date.now() - pollingInterval
   const MAX_BACKOFF_ATTEMPTS = 8
@@ -63,8 +63,7 @@ export const pollForTranslation = async (
         errorContext: 'Failed to get translation content',
       })
     } else if (translationStatus === TranslationStatus.CANCELLED) {
-      console.warn(`Translation ${translationId} status: CANCELLED.`)
-      return []
+      throw new Error('Translation cancelled')
     } else if (translationStatus === TranslationStatus.QUEUED || translationStatus === TranslationStatus.PROCESSING) {
       await new Promise(resolve => setTimeout(resolve, pollingInterval));
     } else {
