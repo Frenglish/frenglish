@@ -18,26 +18,42 @@ import { apiRequest } from './api.js'
  * @param {number} [pollingInterval=500] - Interval between polls in milliseconds
  * @param {number} [maxPollingTime=1800000] - Maximum time to poll in milliseconds
  * @returns {Promise<TranslationResponse[]>} Array of translation responses
- * @throws {Error} If translation is cancelled or polling times out
+ * @throws {Error} If polling times out or the server stays unreachable
  */
 export const pollForTranslation = async (
   translationId: number,
   apiKey: string,
-  pollingInterval: number = 500,     // Default 0.5 seconds
+  pollingInterval: number = 2000,  // Default 2 seconds
   maxPollingTime: number = 1800000 // Default 30 minutes (1800 * 1000 ms)
 ): Promise<TranslationResponse[]> => {
   const startTime = Date.now() - pollingInterval
+  const MAX_BACKOFF_ATTEMPTS = 8
+  const getBackoffDelay = (attempt: number) => Math.min((attempt + 1) * 2000, 16000)
+  let consecutiveErrors = 0
 
-  console.log(`Starting to poll for translation ID: ${translationId}`); // Optional: Add logging
+  console.log(`Waiting for translation to be completed ...`);
 
   while (Date.now() - startTime < maxPollingTime) {
-    const translationStatus = await apiRequest<{ status: TranslationStatus }>('/api/translation/get-status', {
-      body: {
-        translationId,
-        apiKey,
-      },
-      errorContext: 'Failed to get translation status',
-    }).then(data => data.status)
+    let translationStatus: TranslationStatus | undefined
+    try {
+      translationStatus = await apiRequest<{ status: TranslationStatus }>('/api/translation/get-status', {
+        body: {
+          translationId,
+          apiKey,
+        },
+        errorContext: 'Failed to get translation status',
+      }).then(data => data.status)
+      consecutiveErrors = 0
+    } catch (err) {
+      if (consecutiveErrors >= MAX_BACKOFF_ATTEMPTS) {
+        throw new Error(`Server unresponsive after ${MAX_BACKOFF_ATTEMPTS} back‑off attempts (last delay 16s).`)
+      }
+      const delay = getBackoffDelay(consecutiveErrors)
+      consecutiveErrors++
+      await new Promise(resolve => setTimeout(resolve, delay))
+      continue
+    }
+
     if (translationStatus === TranslationStatus.COMPLETED) {
       return apiRequest<TranslationResponse[]>('/api/translation/get-translation', {
         body: {
@@ -47,13 +63,12 @@ export const pollForTranslation = async (
         errorContext: 'Failed to get translation content',
       })
     } else if (translationStatus === TranslationStatus.CANCELLED) {
-      const reason = translationStatus || 'Translation was cancelled for an unspecified reason.'
-      console.error(`Translation ${translationId} status: CANCELLED. Reason: ${reason}`)
-      throw new Error(`Translation failed (ID: ${translationId}): ${reason}`)
+      console.warn(`Translation ${translationId} status: CANCELLED.`)
+      return []
     } else if (translationStatus === TranslationStatus.QUEUED || translationStatus === TranslationStatus.PROCESSING) {
       await new Promise(resolve => setTimeout(resolve, pollingInterval));
     } else {
-        throw new Error(`Translation (ID: ${translationId}) has unexpected status: ${translationStatus}`);
+      throw new Error(`Translation (ID: ${translationId}) has unexpected status: ${translationStatus}`);
     }
   }
   throw new Error(`Polling for translation result (ID: ${translationId}) timed out after ${maxPollingTime / 1000} seconds.`);
