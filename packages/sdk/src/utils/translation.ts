@@ -31,7 +31,7 @@ export const pollForTranslation = async (
   const getBackoffDelay = (attempt: number) => Math.min((attempt + 1) * 2000, 16000)
   let consecutiveErrors = 0
 
-  console.log(`Waiting for translation to be completed ...`);
+  console.log(`Waiting for translation to be completed ...`)
 
   while (Date.now() - startTime < maxPollingTime) {
     let translationStatus: TranslationStatus | undefined
@@ -46,7 +46,7 @@ export const pollForTranslation = async (
       consecutiveErrors = 0
     } catch (err) {
       if (consecutiveErrors >= MAX_BACKOFF_ATTEMPTS) {
-        throw new Error(`Server unresponsive after ${MAX_BACKOFF_ATTEMPTS} back‑off attempts (last delay 16s).`)
+        throw new Error(`Server unresponsive after ${MAX_BACKOFF_ATTEMPTS} back‑off attempts (last delay 16s). Latest error message: ${err}`)
       }
       const delay = getBackoffDelay(consecutiveErrors)
       consecutiveErrors++
@@ -65,12 +65,12 @@ export const pollForTranslation = async (
     } else if (translationStatus === TranslationStatus.CANCELLED) {
       throw new Error('Translation cancelled')
     } else if (translationStatus === TranslationStatus.QUEUED || translationStatus === TranslationStatus.PROCESSING) {
-      await new Promise(resolve => setTimeout(resolve, pollingInterval));
+      await new Promise(resolve => setTimeout(resolve, pollingInterval))
     } else {
-      throw new Error(`Translation (ID: ${translationId}) has unexpected status: ${translationStatus}`);
+      throw new Error(`Translation (ID: ${translationId}) has unexpected status: ${translationStatus}`)
     }
   }
-  throw new Error(`Polling for translation result (ID: ${translationId}) timed out after ${maxPollingTime / 1000} seconds.`);
+  throw new Error(`Polling for translation result (ID: ${translationId}) timed out after ${maxPollingTime / 1000} seconds.`)
 }
 
 /**
