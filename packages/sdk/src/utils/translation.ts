@@ -23,10 +23,12 @@ import { apiRequest } from './api.js'
 export const pollForTranslation = async (
   translationId: number,
   apiKey: string,
-  pollingInterval: number = 500,
-  maxPollingTime: number = 1800000
+  pollingInterval: number = 500,     // Default 0.5 seconds
+  maxPollingTime: number = 1800000 // Default 30 minutes (1800 * 1000 ms)
 ): Promise<TranslationResponse[]> => {
   const startTime = Date.now() - pollingInterval
+
+  console.log(`Starting to poll for translation ID: ${translationId}`); // Optional: Add logging
 
   while (Date.now() - startTime < maxPollingTime) {
     const translationStatus = await apiRequest<{ status: TranslationStatus }>('/api/translation/get-status', {
@@ -36,7 +38,6 @@ export const pollForTranslation = async (
       },
       errorContext: 'Failed to get translation status',
     }).then(data => data.status)
-
     if (translationStatus === TranslationStatus.COMPLETED) {
       return apiRequest<TranslationResponse[]>('/api/translation/get-translation', {
         body: {
@@ -46,12 +47,16 @@ export const pollForTranslation = async (
         errorContext: 'Failed to get translation content',
       })
     } else if (translationStatus === TranslationStatus.CANCELLED) {
-      throw new Error('Translation cancelled')
+      const reason = translationStatus || 'Translation was cancelled for an unspecified reason.'
+      console.error(`Translation ${translationId} status: CANCELLED. Reason: ${reason}`)
+      throw new Error(`Translation failed (ID: ${translationId}): ${reason}`)
+    } else if (translationStatus === TranslationStatus.QUEUED || translationStatus === TranslationStatus.PROCESSING) {
+      await new Promise(resolve => setTimeout(resolve, pollingInterval));
+    } else {
+        throw new Error(`Translation (ID: ${translationId}) has unexpected status: ${translationStatus}`);
     }
-
-    await new Promise(resolve => setTimeout(resolve, pollingInterval))
   }
-  throw new Error('Translation polling timed out')
+  throw new Error(`Polling for translation result (ID: ${translationId}) timed out after ${maxPollingTime / 1000} seconds.`);
 }
 
 /**
