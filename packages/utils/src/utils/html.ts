@@ -8,6 +8,14 @@ import { ExtractionResult } from '@/types/html.js'
 
 const { SHA256 } = pkg;
 
+if (typeof window === 'undefined') {
+  global.Node = {
+    ELEMENT_NODE: 1,
+    TEXT_NODE: 3,
+    // Add other node types if needed
+  } as any
+}
+
 export const FRENGLISH_DATA_KEY = 'data-frenglish-key'
 
 // – Attributes we replace with placeholders
