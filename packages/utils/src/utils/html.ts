@@ -1,10 +1,12 @@
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
-import { SHA256 } from 'crypto-js'
+import pkg from 'crypto-js';
 import type { JSDOM as JSDOMType } from 'jsdom'
 import { extractTextComponents } from './utils.js'
 import { ExtractionResult } from '@/types/html.js'
+
+const { SHA256 } = pkg;
 
 export const FRENGLISH_DATA_KEY = 'data-frenglish-key'
 
