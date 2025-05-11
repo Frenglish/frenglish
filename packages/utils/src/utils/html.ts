@@ -1,12 +1,12 @@
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
-import pkg from 'crypto-js';
+import pkg from 'crypto-js'
 import type { JSDOM as JSDOMType } from 'jsdom'
 import { extractTextComponents } from './utils.js'
 import { ExtractionResult } from '@/types/html.js'
 
-const { SHA256 } = pkg;
+const { SHA256 } = pkg
 
 if (typeof window === 'undefined') {
   global.Node = {
@@ -248,4 +248,36 @@ export async function extractStrings(html: string, injectPlaceholders = true): P
   doc.body && doc.body.childNodes.forEach(walk)
 
   return { modifiedHtml: doc.documentElement.outerHTML, textMap: maps.forward }
+}
+
+// Sets HTML element language
+export function setDocumentLang(doc: Document, lang?: string) {
+  if (!lang || !lang.trim()) return
+  const htmlEl = doc.documentElement
+  if (htmlEl.getAttribute('lang') !== lang) {
+    htmlEl.setAttribute('lang', lang)
+  }
+}
+
+/**
+ * Modify HTMl overrides like directionality (rtl vs ltl), language html attribute, etc.
+ */
+export function injectHTMLOverwrite(doc: Document, language?: string) {
+  // Adjust directionality
+  if (language && languageReadingDirection(language) === 'rtl') {
+    doc.documentElement.setAttribute('dir', 'rtl')
+    const style = doc.createElement('style')
+    style.textContent = 'body, body * { dir: rtl; text-align: right; }'
+    doc.head.appendChild(style)
+  }
+  // Modify HTML attribute language
+  setDocumentLang(doc, language)
+}
+
+/**
+ * Determines if a BCP‑47 language code should be rendered RTL or LTR.
+ */
+export function languageReadingDirection(lang: string): 'rtl' | 'ltr' {
+  const rtl = ['ar', 'he', 'fa', 'ur', 'yi', 'dv', 'ha', 'ps']
+  return rtl.includes(lang.split('-')[0].toLowerCase()) ? 'rtl' : 'ltr'
 }
