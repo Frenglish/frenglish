@@ -74,7 +74,7 @@ function upsertPlaceholder(raw: string | undefined | null, maps: TextMaps, injec
 
 export async function createDocument(html: string): Promise<Document> {
   if (typeof window !== 'undefined' && window.document && !(globalThis as any).IS_UNIT_TEST) {
-    return new window.DOMParser().parseFromString(html, 'text/html')
+    return window.document
   }
   const { JSDOM } = (await import('jsdom')) as { JSDOM: typeof JSDOMType }
   return new JSDOM(html).window.document
@@ -200,6 +200,10 @@ export async function extractStrings(html: string, injectPlaceholders = true): P
 
       if (el.classList.contains('ionicon')) {
         processAttributes(el, maps, injectPlaceholders)
+        return
+      }
+
+      if (node.parentElement?.hasAttribute(FRENGLISH_DATA_KEY)) {
         return
       }
 

@@ -83,64 +83,100 @@ export async function translate(
 ) {
   try {
     console.log('Starting translation process...')
-    console.log(`Reading files from: ${customPath}`)
+    console.log(`Processing path: ${customPath}`)
     console.log(`Output will be written to: ${TRANSLATION_OUTPUT_PATH}`)
 
     if (!apiKey) {
       throw new Error('API key is required')
     }
 
+    // Resolve the output path to an absolute path for reliable relative calculations later
+    const absoluteTranslationOutputPath = path.resolve(process.cwd(), TRANSLATION_OUTPUT_PATH)
+
     const frenglish = FrenglishSDK(apiKey)
     const supportedFileTypes = await frenglish.getSupportedFileTypes()
     const supportedLanguages = await frenglish.getSupportedLanguages()
-    // Ensure we set the project status to active to allow translations
     await frenglish.setProjectActiveStatus(true)
 
-    // Find all files recursively in the translation path
-    const filesToTranslate = await findFilesRecursively(customPath, supportedFileTypes, excludePath)
+    let filesToProcess: string[] = [] // Will contain absolute paths or paths relative to CWD
 
-    // Filter out files that are in language-specific directories
-    const filteredFiles = filesToTranslate.filter(file => {
-      const relativePath = path.relative(customPath, file)
-      const pathParts = relativePath.split(path.sep)
-      // Skip if any part of the path matches a supported language code
-      return !pathParts.some(part => supportedLanguages.includes(part.toLowerCase()))
+    try {
+      const stats = await fs.stat(customPath)
+      const absoluteCustomPath = path.resolve(process.cwd(), customPath) // Get absolute path for consistency
+
+      if (stats.isDirectory()) {
+        console.log(`Provided path is a directory. Searching for translatable files...`)
+        filesToProcess = await findFilesRecursively(absoluteCustomPath, supportedFileTypes, excludePath) // Use absolute path
+      } else if (stats.isFile()) {
+        const ext = path.extname(absoluteCustomPath).toLowerCase().replace('.', '')
+        const isSupported = ext && supportedFileTypes.includes(ext)
+        // Check exclusion against absolute path for consistency
+        const isExcluded = excludePath.some(excluded => absoluteCustomPath.includes(path.resolve(process.cwd(), excluded)))
+
+        if (isSupported && !isExcluded) {
+          filesToProcess = [absoluteCustomPath] // Store the absolute path
+        } else {
+          if (!isSupported) console.warn(`Skipping file ${absoluteCustomPath}: Unsupported file type "${ext}". Supported types: ${supportedFileTypes.join(', ')}`)
+          if (isExcluded) console.warn(`Skipping file ${absoluteCustomPath}: Path is excluded.`)
+          filesToProcess = []
+        }
+      } else {
+        console.warn(`Provided path ${customPath} exists but is neither a file nor a directory. Skipping.`)
+        filesToProcess = []
+      }
+    } catch (error: any) {
+      if (error.code === 'ENOENT') {
+        console.error(`Error: The specified path "${customPath}" does not exist.`)
+      } else {
+        console.error(`Error accessing path "${customPath}":`, error)
+      }
+      return
+    }
+
+    // Filter out files that are already in language-specific directories (relative to project root)
+    const filteredFiles = filesToProcess.filter(fileAbsolutePath => {
+      const relativePathFromCwd = path.relative(process.cwd(), fileAbsolutePath)
+      const pathParts = relativePathFromCwd.split(path.sep)
+      const directoryParts = pathParts.slice(0, -1)
+      // Ensure the directory containing the file is not a language code itself
+      return !directoryParts.some(part => supportedLanguages.includes(part.toLowerCase()))
     })
 
     if (filteredFiles.length === 0) {
-      console.log('\nNo files found to translate.')
+      console.log('\nNo eligible files found to translate after filtering.')
       return
     }
 
+    // Read files using the absolute paths stored in filteredFiles
     const fileContents = await readFiles(filteredFiles)
 
     if (fileContents.length === 0) {
-      console.log('No valid files to translate after reading.')
+      console.log('No valid files to translate after reading content.')
       return
     }
 
-    // Get relative paths for all files
-    const fileIDs = filteredFiles.map(file =>
-      path.relative(process.cwd(), file)
+    // Generate file IDs relative to CWD for the API request, as originally intended
+    const fileIDs = filteredFiles.map(absolutePath =>
+      path.relative(process.cwd(), absolutePath)
     )
 
     const contents = fileContents.map((file) => file.content)
 
     printFrenglishBanner('Frenglish.ai', '🌍 TRANSLATE - Localized. Simplified.', fileIDs)
 
-    // Group files by type for separate processing
     const filesByType = fileIDs.reduce((acc, fileId, index) => {
       const ext = path.extname(fileId).toLowerCase().replace('.', '')
       if (!acc[ext]) {
-        acc[ext] = { ids: [], contents: [] }
+        acc[ext] = { ids: [], contents: [], absolutePaths: [] }
       }
       acc[ext].ids.push(fileId)
       acc[ext].contents.push(contents[index])
+      acc[ext].absolutePaths.push(filteredFiles[index])
       return acc
-    }, {} as Record<string, { ids: string[], contents: string[] }>)
+    }, {} as Record<string, { ids: string[], contents: string[], absolutePaths: string[] }>)
 
-    // Process each file type separately
     for (const [fileType, files] of Object.entries(filesByType)) {
+      console.log(`\nProcessing ${files.ids.length} file(s) of type: ${fileType}`)
       try {
         const translationResponse = await frenglish.translate(
           files.contents,
@@ -149,42 +185,57 @@ export async function translate(
           partialConfig
         )
 
-        // Also get all outdated files that a user may have modified the translation for
         const outdatedFileResponse = await frenglish.getOutdatedFiles()
         const allTranslationResponses = [...translationResponse.content, ...outdatedFileResponse]
 
-        if (allTranslationResponses) {
+        if (allTranslationResponses && allTranslationResponses.length > 0) {
+          console.log(`Received translations/updates for ${allTranslationResponses.length} language(s).`)
           for (const languageData of allTranslationResponses) {
-            // Create language-specific output directory
-            const languageOutputDir = path.join(TRANSLATION_OUTPUT_PATH, languageData.language)
-            await fs.mkdir(languageOutputDir, { recursive: true })
-            console.log(`Created output directory for ${languageData.language}: ${languageOutputDir}`)
+            if (!languageData.files || languageData.files.length === 0) {
+              console.log(`No files to update for language: ${languageData.language}`)
+              continue
+            }
+
+            const languageOutputDir = path.join(absoluteTranslationOutputPath, languageData.language)
+            console.log(`\nProcessing translations for language: ${languageData.language}`)
+            console.log(`Target language directory: ${languageOutputDir}`)
 
             for (const translatedFile of languageData.files) {
-              const originalFile = files.ids.find((f) => f === translatedFile.fileId)
-              if (originalFile) {
-                // Create the full output path maintaining the original structure
-                const translatedFilePath = path.join(languageOutputDir, originalFile)
+              const originalFileIndex = files.ids.findIndex(id => id === translatedFile.fileId)
+              if (originalFileIndex === -1) {
+                console.warn(`  -> Original absolute path not found in current batch for translated file ID: ${translatedFile.fileId}. This might happen if the file came from the 'outdated' check.`)
+                continue
+              }
+              const originalFileAbsolutePath = files.absolutePaths[originalFileIndex]
+              const relativePathToPreserve = path.relative(absoluteTranslationOutputPath, originalFileAbsolutePath)
+
+              if (relativePathToPreserve && !relativePathToPreserve.startsWith('..') && relativePathToPreserve !== '.') {
+                // Construct the full final path for the translated file
+                // Example: path.join('/abs/path/to/src/locales/ko', 'intros/test.json')
+                const translatedFilePath = path.join(languageOutputDir, relativePathToPreserve)
                 await fs.mkdir(path.dirname(translatedFilePath), { recursive: true })
 
-                if (translatedFile.content.length > 0) {
+                if (translatedFile.content && translatedFile.content.length > 0) {
                   await fs.writeFile(translatedFilePath, translatedFile.content, 'utf8')
-                  console.log(`Translated file written: ${translatedFilePath}`)
+                  console.log(`  -> Translated file written: ${path.relative(process.cwd(), translatedFilePath)}`)
                 } else {
-                  console.warn(`Empty content for file: ${translatedFile.fileId}. Skipping.`)
+                  console.warn(`  -> Empty content received for file: ${translatedFile.fileId} (${languageData.language}). Skipping write.`)
                 }
               } else {
-                console.warn(`Original file not found for translated file: ${translatedFile.fileId}`)
+                console.warn(`  -> Could not determine a valid relative path for: ${originalFileAbsolutePath} within base ${absoluteTranslationOutputPath}. Skipping file ID: ${translatedFile.fileId}. Relative path calculated: "${relativePathToPreserve}"`)
               }
             }
           }
+        } else {
+          console.log(`No new translations or updates received for ${fileType} files.`)
         }
       } catch (error) {
-        console.error(`Error processing ${fileType} files:`, error)
-        console.log(`Skipping remaining ${fileType} files and continuing with other file types...`)
+        console.error(`\nError processing ${fileType} files:`, error)
       }
     }
+    console.log('\n 🎉 Translation process finished 🎉')
+
   } catch (error) {
-    console.error('Translation failed:', error)
+    console.error('\nTranslation failed:', error)
   }
 }
