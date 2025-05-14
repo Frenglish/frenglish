@@ -41,7 +41,7 @@ const ATOMIC_CHILD_SET = new Set([
 ])
 
 // – Tags (and matching <script> / <style>) that we *never* walk for text
-const SKIPPED_TAGS = new Set(['script', 'style', 'noscript', 'code', 'pre', 'template', 'svg'])
+export const SKIPPED_TAGS = new Set(['script', 'style', 'noscript', 'code', 'pre', 'template', 'svg'])
 
 // – Heavy / structural nodes that force a parent not to collapse
 const HEAVY_LEAF_SELECTOR =
@@ -53,7 +53,7 @@ const HEAVY_LEAF_SELECTOR =
 // ---------------------------------------------------------------------------
 const generatePlaceholder = (txt: string) => SHA256(txt.trim()).toString()
 
-type TextMaps = { forward: Record<string, string>; reverse: Record<string, string> }
+export type TextMaps = { forward: Record<string, string>; reverse: Record<string, string> }
 
 function upsertPlaceholder(raw: string | undefined | null, maps: TextMaps, inject: boolean) {
   if (!raw) return null
@@ -92,7 +92,7 @@ const isAtomicContainer = (el: Element) => {
   return true
 }
 
-const shouldCollapse = (el: Element) => {
+export const shouldCollapse = (el: Element) => {
   const tag = el.tagName.toLowerCase()
   if (tag === 'html' || tag === 'head' || tag === 'body' || SKIPPED_TAGS.has(tag)) return false
   if (el.hasAttribute(FRENGLISH_DATA_KEY)) return false
