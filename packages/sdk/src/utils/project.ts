@@ -120,8 +120,6 @@ export async function setProjectActiveStatus(apiKey: string, isActive: boolean):
  *   - id: The project ID
  *   - name: The project name
  *   - domain: The project domain
- *   - includedUrlPaths: The list of included URL paths
- *   - excludedUrlPaths: The list of excluded URL paths
  * @throws If the request fails or the API responds with an error.
  */
 export async function getProjectInformation(apiKey: string): Promise<Project> {

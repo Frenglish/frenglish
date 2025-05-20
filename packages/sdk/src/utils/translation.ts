@@ -62,6 +62,8 @@ export const pollForTranslation = async (
         },
         errorContext: 'Failed to get translation content',
       })
+    } else if (translationStatus === TranslationStatus.SKIPPED) {
+      return []
     } else if (translationStatus === TranslationStatus.CANCELLED) {
       throw new Error('Translation cancelled')
     } else if (translationStatus === TranslationStatus.QUEUED || translationStatus === TranslationStatus.PROCESSING) {

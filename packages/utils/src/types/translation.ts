@@ -26,6 +26,7 @@ export enum TranslationStatus {
     QUEUED = 'QUEUED',
     PROCESSING = 'PROCESSING',
     COMPLETED = 'COMPLETED',
+    SKIPPED = 'SKIPPED'
 }
 
 /**
