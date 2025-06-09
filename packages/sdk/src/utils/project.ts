@@ -169,7 +169,7 @@ export async function setTestMode(apiKey: string, isTestMode: boolean): Promise<
 
 /**
  * Saves glossary entries to the project.
- * 
+ *
  * @param apiKey - The API key for authentication
  * @param entries - Glossary entries to save
  * @returns A promise that resolves to a success status
@@ -182,20 +182,20 @@ export async function saveGlossaryEntries(apiKey: string, entries: TranslationRe
       entries
     }
   })
-  
+
   return response
 }
 
 /**
  * Modifies existing glossary entries for the project.
- * 
+ *
  * @param apiKey - The API key for authentication
  * @param entries - Array of modified glossary entries with oldKey, newKey, oldValue, and newValue
  * @returns A promise that resolves to a success status
  * @throws {Error} If the request fails or the API responds with an error
  */
 export async function modifyGlossaryEntries(
-  apiKey: string, 
+  apiKey: string,
   entries: Array<{oldKey: string, newKey: string, oldValue: string, newValue: string}>
 ): Promise<{ success: boolean }> {
   // The API expects entries as a string in a specific format
@@ -204,20 +204,20 @@ export async function modifyGlossaryEntries(
       content: JSON.stringify(entries)
     }]
   }]
-  
+
   const response = await apiRequest<{ success: boolean }>('/api/project/modify-project-glossary-entries', {
     body: {
       apiKey,
       entries: formattedEntries
     }
   })
-  
+
   return response
 }
 
 /**
  * Deletes glossary entries from the project.
- * 
+ *
  * @param apiKey - The API key for authentication
  * @param entries - Array of glossary entries to delete
  * @param language - Optional language to filter deletions
@@ -225,8 +225,8 @@ export async function modifyGlossaryEntries(
  * @throws {Error} If the request fails or the API responds with an error
  */
 export async function deleteGlossaryEntries(
-  apiKey: string, 
-  entries: string[], 
+  apiKey: string,
+  entries: string[],
   language?: string
 ): Promise<{ success: boolean }> {
   const response = await apiRequest<{ success: boolean }>('/api/project/delete-project-glossary-entries', {
@@ -236,6 +236,6 @@ export async function deleteGlossaryEntries(
       language
     }
   })
-  
+
   return response
-} 
+}

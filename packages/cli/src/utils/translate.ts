@@ -142,7 +142,7 @@ export async function translate(
       // If the file is within the explicitly provided customPath, it should always be processed as a source file.
       // This handles cases where customPath itself is a language-specific directory (e.g., src/locales/en)
       if (fileAbsolutePath.startsWith(absoluteCustomPath)) {
-        return true;
+        return true
       }
 
       // For files outside the customPath (e.g., if customPath was a parent directory like 'src/locales'
