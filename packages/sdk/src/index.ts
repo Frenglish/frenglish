@@ -23,7 +23,10 @@ import {
   setProjectActiveStatus as setProjectActiveStatusUtil,
   getProjectInformation as getProjectInformationUtil,
   updateProjectName as updateProjectNameUtil,
-  setTestMode as setTestModeUtil
+  setTestMode as setTestModeUtil,
+  saveGlossaryEntries as saveGlossaryEntriesUtil,
+  modifyGlossaryEntries as modifyGlossaryEntriesUtil,
+  deleteGlossaryEntries as deleteGlossaryEntriesUtil
 } from './utils/project.js'
 
 /**
@@ -233,6 +236,34 @@ export interface FrenglishSDK {
    * @throws {Error} If the request fails or the API responds with an error
    */
   setTestMode(isTestMode: boolean): Promise<Project>;
+
+  /**
+   * Saves glossary entries for a project.
+   *
+   * @param entries - Array of glossary entries to save
+   * @returns {Promise<{ success: boolean }>} A promise that resolves to success status
+   * @throws {Error} If the request fails or the API responds with an error
+   */
+  saveGlossaryEntries(entries: any[]): Promise<{ success: boolean }>;
+
+  /**
+   * Modifies glossary entries for a project.
+   *
+   * @param entries - Array of glossary entries to modify
+   * @returns {Promise<{ success: boolean }>} A promise that resolves to success status
+   * @throws {Error} If the request fails or the API responds with an error
+   */
+  modifyGlossaryEntries(entries: any[]): Promise<{ success: boolean }>;
+
+  /**
+   * Deletes glossary entries for a project.
+   *
+   * @param entries - Array of glossary entries to delete
+   * @param language - Optional language code for the entries to delete
+   * @returns {Promise<any>} A promise that resolves to the deletion result
+   * @throws {Error} If the request fails or the API responds with an error
+   */
+  deleteGlossaryEntries(entries: string[], language?: string): Promise<any>;
 }
 
 /**
@@ -310,6 +341,18 @@ export function FrenglishSDK(apiKey: string): FrenglishSDK {
 
     setTestMode: async (isTestMode) => {
       return setTestModeUtil(apiKey, isTestMode)
+    },
+
+    saveGlossaryEntries: async (entries) => {
+      return saveGlossaryEntriesUtil(apiKey, entries)
+    },
+
+    modifyGlossaryEntries: async (entries) => {
+      return modifyGlossaryEntriesUtil(apiKey, entries)
+    },
+
+    deleteGlossaryEntries: async (entries, language) => {
+      return deleteGlossaryEntriesUtil(apiKey, entries, language)
     }
   }
 }

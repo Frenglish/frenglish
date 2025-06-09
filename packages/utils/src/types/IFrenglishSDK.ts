@@ -37,4 +37,10 @@ export interface IFrenglishSDK {
   getTranslationStatus(translationId: number): Promise<TranslationStatus>;
 
   getTranslationContent(translationId: number): Promise<TranslationResponse[]>;
+
+  saveGlossaryEntries(entries: any[]): Promise<{ success: boolean }>;
+
+  modifyGlossaryEntries(entries: any[]): Promise<{ success: boolean }>;
+
+  deleteGlossaryEntries(entries: string[], language?: string): Promise<{ success: boolean }>;
 }

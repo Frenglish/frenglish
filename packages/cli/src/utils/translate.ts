@@ -28,7 +28,7 @@ const TRANSLATION_OUTPUT_PATH = localConfig.TRANSLATION_OUTPUT_PATH || TRANSLATI
 async function findFilesRecursively(
   dir: string,
   supportedFileTypes: string[],
-  excludePath: string[]
+  excludePath: string[] = []
 ): Promise<string[]> {
   const files: string[] = []
   const entries = await fs.readdir(dir, { withFileTypes: true })
@@ -42,8 +42,8 @@ async function findFilesRecursively(
   for (const entry of entries) {
     const fullPath = path.join(dir, entry.name)
 
-    // Skip system files and excluded paths
-    if (systemFiles.includes(entry.name) || excludePath.some(excluded => fullPath.includes(excluded))) {
+    // Skip system files and excluded paths (only check excludePath if it has items)
+    if (systemFiles.includes(entry.name) || (excludePath?.length > 0 && excludePath.some(excluded => fullPath.includes(excluded)))) {
       continue
     }
 
@@ -92,6 +92,7 @@ export async function translate(
 
     // Resolve the output path to an absolute path for reliable relative calculations later
     const absoluteTranslationOutputPath = path.resolve(process.cwd(), TRANSLATION_OUTPUT_PATH)
+    const absoluteCustomPath = path.resolve(process.cwd(), customPath)
 
     const frenglish = FrenglishSDK(apiKey)
     const supportedFileTypes = await frenglish.getSupportedFileTypes()
@@ -102,7 +103,6 @@ export async function translate(
 
     try {
       const stats = await fs.stat(customPath)
-      const absoluteCustomPath = path.resolve(process.cwd(), customPath) // Get absolute path for consistency
 
       if (stats.isDirectory()) {
         console.log(`Provided path is a directory. Searching for translatable files...`)
@@ -138,7 +138,16 @@ export async function translate(
       const relativePathFromCwd = path.relative(process.cwd(), fileAbsolutePath)
       const pathParts = relativePathFromCwd.split(path.sep)
       const directoryParts = pathParts.slice(0, -1)
-      // Ensure the directory containing the file is not a language code itself
+
+      // If the file is within the explicitly provided customPath, it should always be processed as a source file.
+      // This handles cases where customPath itself is a language-specific directory (e.g., src/locales/en)
+      if (fileAbsolutePath.startsWith(absoluteCustomPath)) {
+        return true;
+      }
+
+      // For files outside the customPath (e.g., if customPath was a parent directory like 'src/locales'
+      // and contained both 'en' and 'fr' subdirectories), filter out files that are already
+      // in language-specific output directories to avoid re-processing translated files as source input.
       return !directoryParts.some(part => supportedLanguages.includes(part.toLowerCase()))
     })
 
@@ -207,7 +216,7 @@ export async function translate(
                 continue
               }
               const originalFileAbsolutePath = files.absolutePaths[originalFileIndex]
-              const relativePathToPreserve = path.relative(absoluteTranslationOutputPath, originalFileAbsolutePath)
+              const relativePathToPreserve = path.relative(absoluteCustomPath, originalFileAbsolutePath)
 
               if (relativePathToPreserve && !relativePathToPreserve.startsWith('..') && relativePathToPreserve !== '.') {
                 // Construct the full final path for the translated file
