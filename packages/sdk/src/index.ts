@@ -1,5 +1,5 @@
 // src/index.ts
-import { PartialConfiguration, Configuration, FlatJSON, Project, FileContentWithLanguage, TranslationResponse, TranslationStatus } from '@frenglish/utils'
+import { PartialConfiguration, Configuration, FlatJSON, Project, FileContentWithLanguage, TranslationResponse, TranslationStatus, Invitation } from '@frenglish/utils'
 import {
   translate as translateUtil,
   translateString as translateStringUtil,
@@ -20,11 +20,14 @@ import {
   getUserProjects as getUserProjectsUtil,
   createProject as createProjectUtil,
   updateConfiguration as updateConfigurationUtil,
+  updateOnboardingConfiguration as updateOnboardingConfigurationUtil,
+  sendProjectInvitation as sendProjectInvitationUtil,
   setProjectActiveStatus as setProjectActiveStatusUtil,
   getProjectInformation as getProjectInformationUtil,
   updateProjectName as updateProjectNameUtil,
   setTestMode as setTestModeUtil,
   saveGlossaryEntries as saveGlossaryEntriesUtil,
+  getGlossaryEntries as getGlossaryEntriesUtil,
   modifyGlossaryEntries as modifyGlossaryEntriesUtil,
   deleteGlossaryEntries as deleteGlossaryEntriesUtil
 } from './utils/project.js'
@@ -203,6 +206,23 @@ export interface FrenglishSDK {
   updateConfiguration(partiallyUpdatedConfig: PartialConfiguration): Promise<Configuration>;
 
   /**
+   * Updates the configuration for the onboarding process.
+   *
+   * @param partiallyUpdatedConfig - The configuration updates to apply
+   * @returns The updated configuration
+   * @throws {Error} If the request fails or the API responds with an error
+   */
+  updateOnboardingConfiguration(partiallyUpdatedConfig: PartialConfiguration): Promise<Configuration>;
+
+  /**
+   * Send invitation to a project for the onboarding process
+   *
+   * @returns {Promise<Invitation>} A promise that resolves to the invitation data
+   * @throws {Error} If the request fails or the API responds with an error
+   */
+  sendProjectInvitation(): Promise<Invitation>;
+
+  /**
    * Toggles the active status of a project.
    *
    * @param isActive - The new active status of the project
@@ -245,6 +265,15 @@ export interface FrenglishSDK {
    * @throws {Error} If the request fails or the API responds with an error
    */
   saveGlossaryEntries(entries: any[]): Promise<{ success: boolean }>;
+
+  /**
+   * Get glossary entries for a project.
+   *
+   * @param entries - Array of glossary entries to save
+   * @returns {Promise<TranslationResponse>} A promise that resolves to success status
+   * @throws {Error} If the request fails or the API responds with an error
+   */
+  getGlossaryEntries(): Promise<TranslationResponse>;
 
   /**
    * Modifies glossary entries for a project.
@@ -327,6 +356,14 @@ export function FrenglishSDK(apiKey: string): FrenglishSDK {
       return updateConfigurationUtil(apiKey, partiallyUpdatedConfig)
     },
 
+    updateOnboardingConfiguration: async (partiallyUpdatedConfig) => {
+      return updateOnboardingConfigurationUtil(apiKey, partiallyUpdatedConfig)
+    },
+
+    sendProjectInvitation: async () => {
+      return sendProjectInvitationUtil(apiKey)
+    },
+
     setProjectActiveStatus: async (isActive) => {
       return setProjectActiveStatusUtil(apiKey, isActive)
     },
@@ -345,6 +382,10 @@ export function FrenglishSDK(apiKey: string): FrenglishSDK {
 
     saveGlossaryEntries: async (entries) => {
       return saveGlossaryEntriesUtil(apiKey, entries)
+    },
+
+    getGlossaryEntries: async () => {
+      return getGlossaryEntriesUtil(apiKey)
     },
 
     modifyGlossaryEntries: async (entries) => {

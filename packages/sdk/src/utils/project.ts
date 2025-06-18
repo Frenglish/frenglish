@@ -1,5 +1,5 @@
 import { apiRequest } from "./api.js"
-import { Configuration, PartialConfiguration, Project, ProjectResponse, TranslationResponse } from "@frenglish/utils"
+import { Configuration, Invitation, PartialConfiguration, Project, ProjectResponse, TranslationResponse } from "@frenglish/utils"
 /**
  * Retrieves the public API key associated with a project based on its domain; this is for website integration only.
  *
@@ -96,6 +96,41 @@ export async function updateConfiguration(apiKey: string, config: PartialConfigu
 }
 
 /**
+ * Update configuration for the onboarding flow only.
+ *
+ * @param apiKey - The API key of the project
+ * @param config - The configuration to update
+ * @returns {Promise<Configuration>} A promise that resolves to the updated configuration
+ * @throws If the request fails or the API responds with an error.
+ */
+export async function updateOnboardingConfiguration(apiKey: string, config: PartialConfiguration): Promise<Configuration> {
+  return apiRequest<Configuration>('/api/configuration/update-onboarding-config', {
+    body: {
+      apiKey,
+      partiallyUpdatedConfig: config,
+    },
+    errorContext: 'Failed to update configuration',
+  })
+}
+
+/**
+ * Send invitation for project during the onboarding flow only.
+ *
+ * @param apiKey - The API key of the project
+ * @throws If the request fails or the API responds with an error.
+ */
+export async function sendProjectInvitation(apiKey: string): Promise<Invitation> {
+  const expiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
+  return apiRequest<Invitation>('/api/invitation/create-onboarding-invitation', {
+    body: {
+      apiKey,
+      expiresAt
+    },
+    errorContext: 'Failed to send invitation',
+  })
+}
+
+/**
  * Update project.
  *
  * @param apiKey - The API key of the project
@@ -168,6 +203,25 @@ export async function setTestMode(apiKey: string, isTestMode: boolean): Promise<
 }
 
 /**
+ * Get glossary entries to the project.
+ *
+ * @param apiKey - The API key for authentication
+ * @param entries - Glossary entries to save
+ * @returns A promise that resolves to a TranslationResponse
+ * @throws {Error} If the request fails or the API responds with an error
+ */
+export async function getGlossaryEntries(apiKey: string): Promise<TranslationResponse> {
+  const response = await apiRequest<TranslationResponse>('/api/project/onboarding-get-project-glossary', {
+    body: {
+      apiKey
+    }
+  })
+
+  return response
+}
+
+
+/**
  * Saves glossary entries to the project.
  *
  * @param apiKey - The API key for authentication
@@ -176,7 +230,7 @@ export async function setTestMode(apiKey: string, isTestMode: boolean): Promise<
  * @throws {Error} If the request fails or the API responds with an error
  */
 export async function saveGlossaryEntries(apiKey: string, entries: TranslationResponse[]): Promise<{ success: boolean }> {
-  const response = await apiRequest<{ success: boolean }>('/api/project/save-project-glossary', {
+  const response = await apiRequest<{ success: boolean }>('/api/project/onboarding-save-project-glossary', {
     body: {
       apiKey,
       entries
@@ -205,7 +259,7 @@ export async function modifyGlossaryEntries(
     }]
   }]
 
-  const response = await apiRequest<{ success: boolean }>('/api/project/modify-project-glossary-entries', {
+  const response = await apiRequest<{ success: boolean }>('/api/project/onboarding-modify-project-glossary-entries', {
     body: {
       apiKey,
       entries: formattedEntries
@@ -229,7 +283,7 @@ export async function deleteGlossaryEntries(
   entries: string[],
   language?: string
 ): Promise<{ success: boolean }> {
-  const response = await apiRequest<{ success: boolean }>('/api/project/delete-project-glossary-entries', {
+  const response = await apiRequest<{ success: boolean }>('/api/project/onboarding-delete-project-glossary-entries', {
     body: {
       apiKey,
       entries,

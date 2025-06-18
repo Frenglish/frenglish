@@ -40,6 +40,8 @@ export interface IFrenglishSDK {
 
   saveGlossaryEntries(entries: any[]): Promise<{ success: boolean }>;
 
+  getGlossaryEntries(): Promise<TranslationResponse>;
+
   modifyGlossaryEntries(entries: any[]): Promise<{ success: boolean }>;
 
   deleteGlossaryEntries(entries: string[], language?: string): Promise<{ success: boolean }>;
