@@ -66,6 +66,13 @@ export const pollForTranslation = async (
       throw new Error('Translation cancelled')
     } else if (translationStatus === TranslationStatus.QUEUED || translationStatus === TranslationStatus.PROCESSING) {
       await new Promise(resolve => setTimeout(resolve, pollingInterval))
+    } else if (translationStatus === TranslationStatus.OVER_HARD_LIMIT) {
+      return apiRequest<TranslationResponse[]>('/api/project/request-text-map', {
+        body: {
+          apiKey,
+        },
+        errorContext: 'Over translation hard limit - failed to get translations',
+      })
     } else {
       throw new Error(`Translation (ID: ${translationId}) has unexpected status: ${translationStatus}`)
     }
