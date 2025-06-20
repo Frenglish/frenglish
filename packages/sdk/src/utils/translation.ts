@@ -71,7 +71,7 @@ export const pollForTranslation = async (
         body: {
           apiKey,
         },
-        errorContext: 'Over translation hard limit - failed to get translations',
+        errorContext: 'Over translation hard limit - failed to translate new content',
       })
     } else {
       throw new Error(`Translation (ID: ${translationId}) has unexpected status: ${translationStatus}`)
