@@ -20,7 +20,6 @@ import {
   getUserProjects as getUserProjectsUtil,
   createProject as createProjectUtil,
   updateConfiguration as updateConfigurationUtil,
-  updateOnboardingConfiguration as updateOnboardingConfigurationUtil,
   sendProjectInvitation as sendProjectInvitationUtil,
   setProjectActiveStatus as setProjectActiveStatusUtil,
   getProjectInformation as getProjectInformationUtil,
@@ -206,15 +205,6 @@ export interface FrenglishSDK {
   updateConfiguration(partiallyUpdatedConfig: PartialConfiguration): Promise<Configuration>;
 
   /**
-   * Updates the configuration for the onboarding process.
-   *
-   * @param partiallyUpdatedConfig - The configuration updates to apply
-   * @returns The updated configuration
-   * @throws {Error} If the request fails or the API responds with an error
-   */
-  updateOnboardingConfiguration(partiallyUpdatedConfig: PartialConfiguration): Promise<Configuration>;
-
-  /**
    * Send invitation to a project for the onboarding process
    *
    * @returns {Promise<Invitation>} A promise that resolves to the invitation data
@@ -354,10 +344,6 @@ export function FrenglishSDK(apiKey: string): FrenglishSDK {
 
     updateConfiguration: async (partiallyUpdatedConfig) => {
       return updateConfigurationUtil(apiKey, partiallyUpdatedConfig)
-    },
-
-    updateOnboardingConfiguration: async (partiallyUpdatedConfig) => {
-      return updateOnboardingConfigurationUtil(apiKey, partiallyUpdatedConfig)
     },
 
     sendProjectInvitation: async () => {

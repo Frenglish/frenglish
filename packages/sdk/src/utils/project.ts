@@ -96,24 +96,6 @@ export async function updateConfiguration(apiKey: string, config: PartialConfigu
 }
 
 /**
- * Update configuration for the onboarding flow only.
- *
- * @param apiKey - The API key of the project
- * @param config - The configuration to update
- * @returns {Promise<Configuration>} A promise that resolves to the updated configuration
- * @throws If the request fails or the API responds with an error.
- */
-export async function updateOnboardingConfiguration(apiKey: string, config: PartialConfiguration): Promise<Configuration> {
-  return apiRequest<Configuration>('/api/configuration/update-onboarding-config', {
-    body: {
-      apiKey,
-      partiallyUpdatedConfig: config,
-    },
-    errorContext: 'Failed to update configuration',
-  })
-}
-
-/**
  * Send invitation for project during the onboarding flow only.
  *
  * @param apiKey - The API key of the project
@@ -121,7 +103,7 @@ export async function updateOnboardingConfiguration(apiKey: string, config: Part
  */
 export async function sendProjectInvitation(apiKey: string): Promise<Invitation> {
   const expiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
-  return apiRequest<Invitation>('/api/invitation/create-onboarding-invitation', {
+  return apiRequest<Invitation>('/api/invitation/create-invitation', {
     body: {
       apiKey,
       expiresAt
@@ -211,7 +193,7 @@ export async function setTestMode(apiKey: string, isTestMode: boolean): Promise<
  * @throws {Error} If the request fails or the API responds with an error
  */
 export async function getGlossaryEntries(apiKey: string): Promise<TranslationResponse> {
-  const response = await apiRequest<TranslationResponse>('/api/project/onboarding-get-project-glossary', {
+  const response = await apiRequest<TranslationResponse>('/api/project/get-project-glossary', {
     body: {
       apiKey
     }
@@ -230,7 +212,7 @@ export async function getGlossaryEntries(apiKey: string): Promise<TranslationRes
  * @throws {Error} If the request fails or the API responds with an error
  */
 export async function saveGlossaryEntries(apiKey: string, entries: TranslationResponse[]): Promise<{ success: boolean }> {
-  const response = await apiRequest<{ success: boolean }>('/api/project/onboarding-save-project-glossary', {
+  const response = await apiRequest<{ success: boolean }>('/api/project/save-project-glossary', {
     body: {
       apiKey,
       entries
@@ -259,7 +241,7 @@ export async function modifyGlossaryEntries(
     }]
   }]
 
-  const response = await apiRequest<{ success: boolean }>('/api/project/onboarding-modify-project-glossary-entries', {
+  const response = await apiRequest<{ success: boolean }>('/api/project/modify-project-glossary-entries', {
     body: {
       apiKey,
       entries: formattedEntries
@@ -283,7 +265,7 @@ export async function deleteGlossaryEntries(
   entries: string[],
   language?: string
 ): Promise<{ success: boolean }> {
-  const response = await apiRequest<{ success: boolean }>('/api/project/onboarding-delete-project-glossary-entries', {
+  const response = await apiRequest<{ success: boolean }>('/api/project/delete-project-glossary-entries', {
     body: {
       apiKey,
       entries,
