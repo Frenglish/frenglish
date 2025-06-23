@@ -12,6 +12,7 @@ export interface IFrenglishSDK {
   translateString(
     content: string,
     lang: string,
+    isFullTranslation: boolean,
     partialConfig?: PartialConfiguration
   ): Promise<string | string[] | undefined>;
 

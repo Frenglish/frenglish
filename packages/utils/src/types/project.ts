@@ -27,7 +27,7 @@ export interface ProjectResponse {
 }
 
 export interface DefaultWebsiteConfig {
-    websiteIntegrationType: 'nextjs' | 'webflow' | 'squarespace' | 'salesforce';
+    websiteIntegrationType: 'nextjs' | 'webflow' | 'squarespace' | 'salesforce' | 'other';
     isTXT1DNSValidated: boolean;
     isTXT2DNSValidated: boolean;
     isReverseProxyDNSValidated: boolean;

@@ -99,6 +99,7 @@ export interface FrenglishSDK {
    *
    * @param content - The string or array of strings content to translate
    * @param lang - Target language code (use getSupportedLanguages() to get valid codes)
+   * @param isFullTranslation - Whether to perform a full translation or partial (the default is set to false so that we would reuse the existing translation)
    * @param partialConfig - Optional configuration overrides
    * @returns Translated string if successful, undefined if not found
    * @throws {Error} If language is not supported, translation is cancelled, or request fails
@@ -106,7 +107,7 @@ export interface FrenglishSDK {
    * @example
    * const translated = await sdk.translateString('Hello world', 'fr');
    */
-  translateString(content: string | string[], lang: string, partialConfig?: PartialConfiguration): Promise<string | string[] | undefined>;
+  translateString(content: string | string[], lang: string, isFullTranslation: boolean, partialConfig?: PartialConfiguration): Promise<string | string[] | undefined>;
 
   /**
    * Gets the current status of a translation request.
@@ -298,8 +299,8 @@ export function FrenglishSDK(apiKey: string): FrenglishSDK {
       return translateUtil(content, apiKey, isFullTranslation, filenames, partialConfig)
     },
 
-    translateString: async (content, lang, partialConfig = {}) => {
-      return translateStringUtil(content, lang, apiKey, partialConfig)
+    translateString: async (content, lang, isFullTranslation, partialConfig = {}) => {
+      return translateStringUtil(content, lang, isFullTranslation, apiKey, partialConfig)
     },
 
     getTranslationStatus: async (translationId) => {
