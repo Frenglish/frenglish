@@ -102,7 +102,7 @@ export async function updateConfiguration(apiKey: string, config: PartialConfigu
  * @throws If the request fails or the API responds with an error.
  */
 export async function sendProjectInvitation(apiKey: string): Promise<Invitation> {
-  const expiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
+  const expiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString()
   return apiRequest<Invitation>('/api/invitation/create-invitation', {
     body: {
       apiKey,
@@ -201,7 +201,6 @@ export async function getGlossaryEntries(apiKey: string): Promise<TranslationRes
 
   return response
 }
-
 
 /**
  * Saves glossary entries to the project.
