@@ -3,6 +3,7 @@
 // Export all types
 export * from './types/translation.js'
 export * from './types/configuration.js'
+export * from './types/invitation.js'
 export * from './types/project.js'
 export * from './types/file.js'
 export * from './types/html.js'

@@ -12,6 +12,7 @@ export interface IFrenglishSDK {
   translateString(
     content: string,
     lang: string,
+    isFullTranslation: boolean,
     partialConfig?: PartialConfiguration
   ): Promise<string | string[] | undefined>;
 
@@ -37,4 +38,12 @@ export interface IFrenglishSDK {
   getTranslationStatus(translationId: number): Promise<TranslationStatus>;
 
   getTranslationContent(translationId: number): Promise<TranslationResponse[]>;
+
+  saveGlossaryEntries(entries: any[]): Promise<{ success: boolean }>;
+
+  getGlossaryEntries(): Promise<TranslationResponse>;
+
+  modifyGlossaryEntries(entries: any[]): Promise<{ success: boolean }>;
+
+  deleteGlossaryEntries(entries: string[], language?: string): Promise<{ success: boolean }>;
 }

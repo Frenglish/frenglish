@@ -62,6 +62,8 @@ export const pollForTranslation = async (
         },
         errorContext: 'Failed to get translation content',
       })
+    } else if (translationStatus === TranslationStatus.SKIPPED) {
+      return []
     } else if (translationStatus === TranslationStatus.CANCELLED) {
       throw new Error('Translation cancelled')
     } else if (translationStatus === TranslationStatus.QUEUED || translationStatus === TranslationStatus.PROCESSING) {
@@ -130,6 +132,7 @@ export async function translate(
 export async function translateString(
   content: string | string[],
   lang: string,
+  isFullTranslation = false,
   apiKey: string,
   partialConfig: PartialConfiguration = {}
 ): Promise<string | string[] | undefined> {
@@ -149,6 +152,7 @@ export async function translateString(
       lang,
       partialConfig: parsedConfig,
       apiKey,
+      isFullTranslation
     },
     errorContext: 'Failed to request translation string',
   })

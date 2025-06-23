@@ -56,7 +56,8 @@ const result = await sdk.translate(
 const translated = await sdk.translateString(
   content: string | string[],            // String or string[] to translate
   lang: string,                          // Target language code
-  partialConfig?: PartialConfiguration
+  isFullTranslation?: boolean,           // Whether to perform a full translation
+  partialConfig?: PartialConfiguration.
 );
 ```
 

@@ -1,5 +1,5 @@
 // src/index.ts
-import { PartialConfiguration, Configuration, FlatJSON, Project, FileContentWithLanguage, TranslationResponse, TranslationStatus } from '@frenglish/utils'
+import { PartialConfiguration, Configuration, FlatJSON, Project, FileContentWithLanguage, TranslationResponse, TranslationStatus, Invitation } from '@frenglish/utils'
 import {
   translate as translateUtil,
   translateString as translateStringUtil,
@@ -20,10 +20,15 @@ import {
   getUserProjects as getUserProjectsUtil,
   createProject as createProjectUtil,
   updateConfiguration as updateConfigurationUtil,
+  sendProjectInvitation as sendProjectInvitationUtil,
   setProjectActiveStatus as setProjectActiveStatusUtil,
   getProjectInformation as getProjectInformationUtil,
   updateProjectName as updateProjectNameUtil,
-  setTestMode as setTestModeUtil
+  setTestMode as setTestModeUtil,
+  saveGlossaryEntries as saveGlossaryEntriesUtil,
+  getGlossaryEntries as getGlossaryEntriesUtil,
+  modifyGlossaryEntries as modifyGlossaryEntriesUtil,
+  deleteGlossaryEntries as deleteGlossaryEntriesUtil
 } from './utils/project.js'
 
 /**
@@ -94,6 +99,7 @@ export interface FrenglishSDK {
    *
    * @param content - The string or array of strings content to translate
    * @param lang - Target language code (use getSupportedLanguages() to get valid codes)
+   * @param isFullTranslation - Whether to perform a full translation or partial (the default is set to false so that we would reuse the existing translation)
    * @param partialConfig - Optional configuration overrides
    * @returns Translated string if successful, undefined if not found
    * @throws {Error} If language is not supported, translation is cancelled, or request fails
@@ -101,7 +107,7 @@ export interface FrenglishSDK {
    * @example
    * const translated = await sdk.translateString('Hello world', 'fr');
    */
-  translateString(content: string | string[], lang: string, partialConfig?: PartialConfiguration): Promise<string | string[] | undefined>;
+  translateString(content: string | string[], lang: string, isFullTranslation: boolean, partialConfig?: PartialConfiguration): Promise<string | string[] | undefined>;
 
   /**
    * Gets the current status of a translation request.
@@ -200,6 +206,14 @@ export interface FrenglishSDK {
   updateConfiguration(partiallyUpdatedConfig: PartialConfiguration): Promise<Configuration>;
 
   /**
+   * Send invitation to a project for the onboarding process
+   *
+   * @returns {Promise<Invitation>} A promise that resolves to the invitation data
+   * @throws {Error} If the request fails or the API responds with an error
+   */
+  sendProjectInvitation(): Promise<Invitation>;
+
+  /**
    * Toggles the active status of a project.
    *
    * @param isActive - The new active status of the project
@@ -233,6 +247,43 @@ export interface FrenglishSDK {
    * @throws {Error} If the request fails or the API responds with an error
    */
   setTestMode(isTestMode: boolean): Promise<Project>;
+
+  /**
+   * Saves glossary entries for a project.
+   *
+   * @param entries - Array of glossary entries to save
+   * @returns {Promise<{ success: boolean }>} A promise that resolves to success status
+   * @throws {Error} If the request fails or the API responds with an error
+   */
+  saveGlossaryEntries(entries: any[]): Promise<{ success: boolean }>;
+
+  /**
+   * Get glossary entries for a project.
+   *
+   * @param entries - Array of glossary entries to save
+   * @returns {Promise<TranslationResponse>} A promise that resolves to success status
+   * @throws {Error} If the request fails or the API responds with an error
+   */
+  getGlossaryEntries(): Promise<TranslationResponse>;
+
+  /**
+   * Modifies glossary entries for a project.
+   *
+   * @param entries - Array of glossary entries to modify
+   * @returns {Promise<{ success: boolean }>} A promise that resolves to success status
+   * @throws {Error} If the request fails or the API responds with an error
+   */
+  modifyGlossaryEntries(entries: any[]): Promise<{ success: boolean }>;
+
+  /**
+   * Deletes glossary entries for a project.
+   *
+   * @param entries - Array of glossary entries to delete
+   * @param language - Optional language code for the entries to delete
+   * @returns {Promise<any>} A promise that resolves to the deletion result
+   * @throws {Error} If the request fails or the API responds with an error
+   */
+  deleteGlossaryEntries(entries: string[], language?: string): Promise<any>;
 }
 
 /**
@@ -248,8 +299,8 @@ export function FrenglishSDK(apiKey: string): FrenglishSDK {
       return translateUtil(content, apiKey, isFullTranslation, filenames, partialConfig)
     },
 
-    translateString: async (content, lang, partialConfig = {}) => {
-      return translateStringUtil(content, lang, apiKey, partialConfig)
+    translateString: async (content, lang, isFullTranslation, partialConfig = {}) => {
+      return translateStringUtil(content, lang, isFullTranslation, apiKey, partialConfig)
     },
 
     getTranslationStatus: async (translationId) => {
@@ -296,6 +347,10 @@ export function FrenglishSDK(apiKey: string): FrenglishSDK {
       return updateConfigurationUtil(apiKey, partiallyUpdatedConfig)
     },
 
+    sendProjectInvitation: async () => {
+      return sendProjectInvitationUtil(apiKey)
+    },
+
     setProjectActiveStatus: async (isActive) => {
       return setProjectActiveStatusUtil(apiKey, isActive)
     },
@@ -310,6 +365,22 @@ export function FrenglishSDK(apiKey: string): FrenglishSDK {
 
     setTestMode: async (isTestMode) => {
       return setTestModeUtil(apiKey, isTestMode)
+    },
+
+    saveGlossaryEntries: async (entries) => {
+      return saveGlossaryEntriesUtil(apiKey, entries)
+    },
+
+    getGlossaryEntries: async () => {
+      return getGlossaryEntriesUtil(apiKey)
+    },
+
+    modifyGlossaryEntries: async (entries) => {
+      return modifyGlossaryEntriesUtil(apiKey, entries)
+    },
+
+    deleteGlossaryEntries: async (entries, language) => {
+      return deleteGlossaryEntriesUtil(apiKey, entries, language)
     }
   }
 }

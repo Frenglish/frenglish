@@ -13,13 +13,13 @@ export interface Project {
     domainKeys?: string[]
     useSubdomains: boolean
     integrationType: string
-    includedUrlPaths?: string[]
-    excludedUrlPaths?: string[]
   }
 
 export interface WordpressConfig {
     websiteIntegrationType: 'wordpress';
     apiKey: string;
+    includedUrlPaths: string [];
+    excludedUrlPaths: string [];
   }
 
 export interface ProjectResponse {
@@ -39,4 +39,6 @@ export interface DefaultWebsiteConfig {
     cloudflareTxtRecord2Name: string;
     cloudflareTxtRecord2Value: string;
     cloudflareOriginServerProxy: string;
+    includedUrlPaths: string [];
+    excludedUrlPaths: string [];
   }

@@ -1,5 +1,5 @@
 import { apiRequest } from "./api.js"
-import { Configuration, PartialConfiguration, Project, ProjectResponse } from "@frenglish/utils"
+import { Configuration, Invitation, PartialConfiguration, Project, ProjectResponse, TranslationResponse } from "@frenglish/utils"
 /**
  * Retrieves the public API key associated with a project based on its domain; this is for website integration only.
  *
@@ -96,6 +96,23 @@ export async function updateConfiguration(apiKey: string, config: PartialConfigu
 }
 
 /**
+ * Send invitation for project during the onboarding flow only.
+ *
+ * @param apiKey - The API key of the project
+ * @throws If the request fails or the API responds with an error.
+ */
+export async function sendProjectInvitation(apiKey: string): Promise<Invitation> {
+  const expiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString()
+  return apiRequest<Invitation>('/api/invitation/create-invitation', {
+    body: {
+      apiKey,
+      expiresAt
+    },
+    errorContext: 'Failed to send invitation',
+  })
+}
+
+/**
  * Update project.
  *
  * @param apiKey - The API key of the project
@@ -120,8 +137,6 @@ export async function setProjectActiveStatus(apiKey: string, isActive: boolean):
  *   - id: The project ID
  *   - name: The project name
  *   - domain: The project domain
- *   - includedUrlPaths: The list of included URL paths
- *   - excludedUrlPaths: The list of excluded URL paths
  * @throws If the request fails or the API responds with an error.
  */
 export async function getProjectInformation(apiKey: string): Promise<Project> {
@@ -167,4 +182,95 @@ export async function setTestMode(apiKey: string, isTestMode: boolean): Promise<
     },
     errorContext: 'Failed to set test mode',
   })
+}
+
+/**
+ * Get glossary entries to the project.
+ *
+ * @param apiKey - The API key for authentication
+ * @param entries - Glossary entries to save
+ * @returns A promise that resolves to a TranslationResponse
+ * @throws {Error} If the request fails or the API responds with an error
+ */
+export async function getGlossaryEntries(apiKey: string): Promise<TranslationResponse> {
+  const response = await apiRequest<TranslationResponse>('/api/project/get-project-glossary', {
+    body: {
+      apiKey
+    }
+  })
+
+  return response
+}
+
+/**
+ * Saves glossary entries to the project.
+ *
+ * @param apiKey - The API key for authentication
+ * @param entries - Glossary entries to save
+ * @returns A promise that resolves to a success status
+ * @throws {Error} If the request fails or the API responds with an error
+ */
+export async function saveGlossaryEntries(apiKey: string, entries: TranslationResponse[]): Promise<{ success: boolean }> {
+  const response = await apiRequest<{ success: boolean }>('/api/project/save-project-glossary', {
+    body: {
+      apiKey,
+      entries
+    }
+  })
+
+  return response
+}
+
+/**
+ * Modifies existing glossary entries for the project.
+ *
+ * @param apiKey - The API key for authentication
+ * @param entries - Array of modified glossary entries with oldKey, newKey, oldValue, and newValue
+ * @returns A promise that resolves to a success status
+ * @throws {Error} If the request fails or the API responds with an error
+ */
+export async function modifyGlossaryEntries(
+  apiKey: string,
+  entries: Array<{oldKey: string, newKey: string, oldValue: string, newValue: string}>
+): Promise<{ success: boolean }> {
+  // The API expects entries as a string in a specific format
+  const formattedEntries = [{
+    files: [{
+      content: JSON.stringify(entries)
+    }]
+  }]
+
+  const response = await apiRequest<{ success: boolean }>('/api/project/modify-project-glossary-entries', {
+    body: {
+      apiKey,
+      entries: formattedEntries
+    }
+  })
+
+  return response
+}
+
+/**
+ * Deletes glossary entries from the project.
+ *
+ * @param apiKey - The API key for authentication
+ * @param entries - Array of glossary entries to delete
+ * @param language - Optional language to filter deletions
+ * @returns A promise that resolves to the result of the deletion
+ * @throws {Error} If the request fails or the API responds with an error
+ */
+export async function deleteGlossaryEntries(
+  apiKey: string,
+  entries: string[],
+  language?: string
+): Promise<{ success: boolean }> {
+  const response = await apiRequest<{ success: boolean }>('/api/project/delete-project-glossary-entries', {
+    body: {
+      apiKey,
+      entries,
+      language
+    }
+  })
+
+  return response
 }
