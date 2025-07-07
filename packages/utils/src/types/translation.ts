@@ -47,3 +47,9 @@ export interface FlatJSON {
     translationComment?: string // Optional translation comment for the value
     value: any // Value associated with path in json
   }
+
+export interface TranslationFileFlatJSON {
+    path: string,
+    content: FlatJSON[],
+    rawContent?: string | Buffer
+}
