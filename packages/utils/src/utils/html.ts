@@ -4,7 +4,9 @@
 import pkg from 'crypto-js'
 import type { JSDOM as JSDOMType } from 'jsdom'
 import { extractTextComponents } from './utils.js'
-import { ExtractionResult } from '@/types/html.js'
+import { CompressionResult, ExtractionResult, MasterStyleMap, OriginalTagInfo } from '@/types/html.js'
+import { Configuration } from '@/types/configuration.js'
+import { FlatJSON } from '@/types/translation.js'
 
 const { SHA256 } = pkg
 
@@ -33,7 +35,7 @@ const COLLAPSIBLE_TAGS = [
 ]
 const COLLAPSIBLE_SET = new Set(COLLAPSIBLE_TAGS)
 
-// – If a container’s children are *only* these tags (and no text),
+// – If a container's children are *only* these tags (and no text),
 //   treat children individually instead of collapsing the parent
 const ATOMIC_CHILD_SET = new Set([
   'label', 'input', 'textarea', 'button', 'select', 'option',
@@ -48,6 +50,7 @@ const HEAVY_LEAF_SELECTOR =
   'script,style,iframe,video,audio,object,embed,canvas,noscript,svg,' +
   'table,ul,ol,dl,div:not(:empty),' + COLLAPSIBLE_TAGS.join(',')
 
+export const PLACEHOLDER_TAG_RE = /<(?:STY|HREF|EXCL)\d+\b[^>]*>/i;
 // ---------------------------------------------------------------------------
 // Utility helpers
 // ---------------------------------------------------------------------------
@@ -55,20 +58,42 @@ const generatePlaceholder = (txt: string) => SHA256(txt.trim()).toString()
 
 export type TextMaps = { forward: Record<string, string>; reverse: Record<string, string> }
 
-function upsertPlaceholder(raw: string | undefined | null, maps: TextMaps, inject: boolean) {
+async function upsertPlaceholder(raw: string | undefined | null, maps: TextMaps, inject: boolean, config: Configuration, compress: boolean) {
   if (!raw) return null
   const { leadingSpace, middleText, trailingSpace } = extractTextComponents(raw)
   if (!middleText) return null
 
-  let hash = maps.reverse[middleText]
+  let compressedMiddleTextString: string
+  if (compress) {
+    const compressedMiddleText = await compressInlineStyling(middleText, config)
+    compressedMiddleTextString = shouldEscape(compressedMiddleText.compressed)
+      ? escapeAttribute(compressedMiddleText.compressed)
+      : compressedMiddleText.compressed
+  } else {
+    compressedMiddleTextString = middleText
+  }
+  
+  const PH_TAG_RE = /<(\/?)(sty|href|excl)(\d+)([^>]*)>/gi;
+  compressedMiddleTextString = compressedMiddleTextString.replace(
+    PH_TAG_RE,
+    (
+      _full: string,
+      slash: string = '',
+      prefix: string,
+      num: string,
+      rest: string = ''
+    ) => `<${slash}${prefix.toUpperCase()}${num}${rest}>`
+  );
+
+  let hash = maps.reverse[compressedMiddleTextString]
   if (!hash) {
-    hash = generatePlaceholder(middleText)
-    maps.forward[hash] = middleText
-    maps.reverse[middleText] = hash
+    hash = generatePlaceholder(compressedMiddleTextString)
+    maps.forward[hash] = compressedMiddleTextString
+    maps.reverse[compressedMiddleTextString] = hash
   }
   return {
     hash,
-    newText: leadingSpace + (inject ? hash : middleText) + trailingSpace,
+    newText: leadingSpace + (inject ? hash : compressedMiddleTextString) + trailingSpace,
   }
 }
 
@@ -105,15 +130,19 @@ export const shouldCollapse = (el: Element) => {
 // ---------------------------------------------------------------------------
 // Recursive processors
 // ---------------------------------------------------------------------------
-function processAttributes(el: Element, maps: TextMaps, inject: boolean) {
+async function processAttributes(el: Element, maps: TextMaps, inject: boolean, config: Configuration, compress: boolean, injectDataKey: boolean) {
   const tag = el.tagName.toLowerCase()
 
-  TRANSLATABLE_ATTRIBUTES.forEach(attr => {
+  if (tag === 'title') {
+    return // ✅ skip entirely because <title> is handled separately
+  }
+
+  for (const attr of TRANSLATABLE_ATTRIBUTES) {
     const val = el.getAttribute(attr)
-    if (!val?.trim()) return
-    const rep = upsertPlaceholder(val, maps, inject)
+    if (!val?.trim()) continue
+    const rep = await upsertPlaceholder(val, maps, inject, config, compress)
     if (rep) el.setAttribute(attr, rep.newText)
-  })
+  }
 
   // value="…" on buttons / inputs
   const valAttr = el.getAttribute('value')
@@ -122,7 +151,7 @@ function processAttributes(el: Element, maps: TextMaps, inject: boolean) {
     valAttr &&
     (tag === 'button' || tag === 'option' || (tag === 'input' && ['button', 'submit', 'reset'].includes(type)))
   ) {
-    const rep = upsertPlaceholder(valAttr, maps, inject)
+    const rep = await upsertPlaceholder(valAttr, maps, inject, config, compress)
     if (rep) el.setAttribute('value', rep.newText)
   }
 
@@ -143,7 +172,7 @@ function processAttributes(el: Element, maps: TextMaps, inject: boolean) {
         'application-name',
       ].includes(name)
     ) {
-      const rep = upsertPlaceholder(content, maps, inject)
+      const rep = await upsertPlaceholder(content, maps, inject, config, compress)
       if (rep) el.setAttribute('content', rep.newText)
     }
     return
@@ -151,20 +180,23 @@ function processAttributes(el: Element, maps: TextMaps, inject: boolean) {
 
   // <title>
   if (tag === 'title' && !el.hasAttribute(FRENGLISH_DATA_KEY)) {
-    const rep = upsertPlaceholder(el.textContent, maps, inject)
+    const rep = await upsertPlaceholder(el.textContent, maps, inject, config, compress)
     if (rep) {
-      el.setAttribute(FRENGLISH_DATA_KEY, rep.hash)
+      if (injectDataKey) el.setAttribute(FRENGLISH_DATA_KEY, rep.hash)
       el.textContent = rep.newText
     }
   }
 }
 
-function processDataValue(val: any, maps: TextMaps, inject: boolean): any {
-  if (typeof val === 'string') return upsertPlaceholder(val, maps, inject)?.newText
-  if (Array.isArray(val)) return val.map(v => processDataValue(v, maps, inject))
+async function processDataValue(val: any, maps: TextMaps, inject: boolean, config: Configuration, compress: boolean): Promise<any> {
+  if (typeof val === 'string') {
+    const rep = await upsertPlaceholder(val, maps, inject, config, compress)
+    return rep?.newText
+  }
+  if (Array.isArray(val)) return Promise.all(val.map(v => processDataValue(v, maps, inject, config, compress)))
   if (val && typeof val === 'object') {
     const out: Record<string, any> = {}
-    for (const [k, v] of Object.entries(val)) out[k] = processDataValue(v, maps, inject)
+    for (const [k, v] of Object.entries(val)) out[k] = await processDataValue(v, maps, inject, config, compress)
     return out
   }
   return val
@@ -173,12 +205,18 @@ function processDataValue(val: any, maps: TextMaps, inject: boolean): any {
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
-export async function extractStrings(html: string, injectPlaceholders = true): Promise<ExtractionResult> {
+export async function extractStrings(
+  html: string,
+  injectPlaceholders = true,
+  config: Configuration,
+  compress = true,
+  injectDataKey = true
+): Promise<ExtractionResult> {
   const maps: TextMaps = { forward: {}, reverse: {} }
   const doc = await createDocument(html)
   const NodeConsts = doc.defaultView?.Node ?? { ELEMENT_NODE: 1, TEXT_NODE: 3 }
 
-  const walk = (node: Node): void => {
+  const walk = async (node: Node): Promise<void> => {
     if (node.nodeType === NodeConsts.ELEMENT_NODE) {
       const el = node as Element
       const tag = el.tagName.toLowerCase()
@@ -188,7 +226,7 @@ export async function extractStrings(html: string, injectPlaceholders = true): P
           try {
             const json = JSON.parse(el.textContent || '{}')
             if (json.props) {
-              processDataValue(json.props, maps, injectPlaceholders)
+              await processDataValue(json.props, maps, injectPlaceholders, config, compress)
               if (injectPlaceholders) el.textContent = JSON.stringify(json)
             }
           } catch {
@@ -199,7 +237,7 @@ export async function extractStrings(html: string, injectPlaceholders = true): P
       }
 
       if (el.classList.contains('ionicon')) {
-        processAttributes(el, maps, injectPlaceholders)
+        await processAttributes(el, maps, injectPlaceholders, config, compress, injectDataKey)
         return
       }
 
@@ -208,17 +246,21 @@ export async function extractStrings(html: string, injectPlaceholders = true): P
       }
 
       if (shouldCollapse(el)) {
-        const rep = upsertPlaceholder(el.innerHTML, maps, injectPlaceholders)
+        const rep = await upsertPlaceholder(el.innerHTML, maps, injectPlaceholders, config, compress)
         if (rep) {
-          el.setAttribute(FRENGLISH_DATA_KEY, rep.hash)
+          if (injectDataKey) el.setAttribute(FRENGLISH_DATA_KEY, rep.hash)
           el.innerHTML = rep.newText
-          processAttributes(el, maps, injectPlaceholders)
+          await processAttributes(el, maps, injectPlaceholders, config, compress, injectDataKey)
         }
         return
       }
 
-      processAttributes(el, maps, injectPlaceholders)
-      el.childNodes.forEach(walk)
+      await processAttributes(el, maps, injectPlaceholders, config, compress, injectDataKey)
+
+      // recursive
+      for (const child of el.childNodes) {
+        await walk(child)
+      }
       return
     }
 
@@ -226,26 +268,47 @@ export async function extractStrings(html: string, injectPlaceholders = true): P
       const parent = node.parentElement
       if (!parent || !node.textContent?.trim()) return
       const pTag = parent.tagName.toLowerCase()
+
+      // special handling for <title>
+      if (pTag === 'title') {
+        const rep = await upsertPlaceholder(node.textContent, maps, injectPlaceholders, config, compress)
+        if (rep) {
+          if (injectDataKey) parent.setAttribute(FRENGLISH_DATA_KEY, rep.hash)
+          node.textContent = rep.newText
+        }
+        return
+      }
+
       if (
         parent.hasAttribute(FRENGLISH_DATA_KEY) ||
         SKIPPED_TAGS.has(pTag) ||
         pTag === 'textarea' ||
         (pTag === 'input' && !['button', 'submit', 'reset'].includes(parent.getAttribute('type')?.toLowerCase() || ''))
-      )
+      ) {
         return
+      }
 
-      const rep = upsertPlaceholder(node.textContent, maps, injectPlaceholders)
+      const rep = await upsertPlaceholder(node.textContent, maps, injectPlaceholders, config, compress)
       if (rep) {
         const span = doc.createElement('span')
-        span.setAttribute(FRENGLISH_DATA_KEY, rep.hash)
+        if (injectDataKey) span.setAttribute(FRENGLISH_DATA_KEY, rep.hash)
         span.textContent = rep.newText
         parent.replaceChild(span, node)
       }
     }
   }
 
-  doc.head && doc.head.childNodes.forEach(walk)
-  doc.body && doc.body.childNodes.forEach(walk)
+  // process head and body
+  if (doc.head) {
+    for (const node of doc.head.childNodes) {
+      await walk(node)
+    }
+  }
+  if (doc.body) {
+    for (const node of doc.body.childNodes) {
+      await walk(node)
+    }
+  }
 
   return { modifiedHtml: doc.documentElement.outerHTML, textMap: maps.forward }
 }
@@ -280,4 +343,369 @@ export function injectHTMLOverwrite(doc: Document, language?: string) {
 export function languageReadingDirection(lang: string): 'rtl' | 'ltr' {
   const rtl = ['ar', 'he', 'fa', 'ur', 'yi', 'dv', 'ha', 'ps']
   return rtl.includes(lang.split('-')[0].toLowerCase()) ? 'rtl' : 'ltr'
+}
+
+// -----------------------------------------------------------------------------
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║  INLINE‑STYLING COMPRESSION / DECOMPRESSION                              ║
+// ╚══════════════════════════════════════════════════════════════════════════╝
+// -----------------------------------------------------------------------------
+
+/**
+ * Decompresses a string that contains either <STYm>…</STYm>
+ * **or** <HREFm>…</HREFm> placeholders or similar
+ */
+export function decompressHTML(
+  compressedString: string,
+  styleMap: Record<string, OriginalTagInfo>,
+  hrefMap: Record<string, string> = {},
+): string {
+  let out = compressedString
+
+  // Compression wrappers: hrefs, styling and exclusions
+  // Updated RE to match generic placeholders like <STY0>, <HREF0>, <EXCL0>
+  const RE = /<((?:STY|HREF|EXCL)\d+)([^>]*)>(?:([\s\S]*?)<\/\1>)?/gi
+
+  out = out.replace(RE, (m, phTag, newAttrs, content) => {
+    const info = styleMap[phTag]
+    if (!info) return m
+
+    /* 1️⃣ parse any attrs the translator left on the tag */
+    const parsed = Object.fromEntries(
+      [...newAttrs.matchAll(/\s+([^\s=]+)="([^"]*)"/g)]
+        .map(([, k, v]) => [k, v])
+    )
+
+    /* 2️⃣ merge: translator wins over original */
+    const final: Record<string, string> = { ...info.attributes, ...parsed }
+
+    /* 3️⃣ serialize */
+    let attrString = ''
+    for (const [k, v] of Object.entries(final)) {
+      attrString += ` ${k}="${escapeAttribute(v)}"`
+    }
+
+    // Handle self-closing elements
+    const selfClosingTags = ['input', 'img', 'br', 'hr', 'meta', 'link']
+    if (selfClosingTags.includes(info.tagName.toLowerCase())) {
+      return `<${info.tagName.toLowerCase()}${attrString}>`
+    }
+
+    return `<${info.tagName.toLowerCase()}${attrString}>${content || ''}</${info.tagName.toLowerCase()}>`
+  })
+
+  // run repeatedly so we handle nested placeholders in one call
+  let prev: string
+  let pass = 0
+  do {
+    if (++pass > 20) break
+    prev = out
+    out = out.replace(RE, (m, phTag, _attrs, content) => {
+      const info = styleMap[phTag]
+      if (!info) return m
+      let attrs = ''
+      for (const [k, v] of Object.entries(info.attributes)) {
+        attrs += ` ${k}="${escapeAttribute(v)}"`
+      }
+
+      // Handle self-closing elements
+      const selfClosingTags = ['input', 'img', 'br', 'hr', 'meta', 'link']
+      if (selfClosingTags.includes(info.tagName.toLowerCase())) {
+        return `<${info.tagName.toLowerCase()}${attrs}>`
+      }
+
+      return `<${info.tagName.toLowerCase()}${attrs}>${content || ''}</${info.tagName.toLowerCase()}>`
+    })
+  } while (out !== prev)
+
+  /* ── 2️⃣  Restore href=\"HREF…\" attribute values  ────────────────────── */
+  out = restoreHrefs(out, hrefMap)
+
+  /* ── 3️⃣  Cosmetic: force lowercase tag-names written by jsdom  ───────── */
+  return out.replace(/<\/?([A-Z]+)/g, m => m.toLowerCase())
+}
+
+/**
+ * Compresses every **FlatJSON.value** that contains inline HTML. All other
+ * values are kept intact. The original array order is preserved.
+ *
+ * @param originalFlatJson array of FlatJSON items to scan
+ * @param collectMaps      whether to build a master style‑map for later restore
+ */
+export async function compressHTMLTextMapValues(
+  originalFlatJson: FlatJSON[],
+  config: Configuration
+): Promise<{ compressed: FlatJSON[]; styleMap: MasterStyleMap }> {
+  const compressed: FlatJSON[] = []
+  const masterStyleMap: MasterStyleMap = {}
+  const htmlish = /<[a-z][\s\S]*>/i
+
+  for (let i = 0; i < originalFlatJson.length; i++) {
+    const item = originalFlatJson[i]
+    if (typeof item.value === 'string' && htmlish.test(item.value)) {
+      const { compressed: cmp, styleMap, hrefMap } = await compressInlineStyling(item.value, config)
+      const compressedValueHash = SHA256(cmp).toString();
+
+      compressed.push({ ...item, value: cmp })
+      masterStyleMap[compressedValueHash] = { styleMap, hrefMap }
+
+    } else {
+      compressed.push(item)
+    }
+  }
+
+  return {
+    compressed,
+    styleMap: masterStyleMap
+  };
+}
+
+
+// -----------------------------------------------------------------------------
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║  DEFAULTS                                                                ║
+// ╚══════════════════════════════════════════════════════════════════════════╝
+// -----------------------------------------------------------------------------
+
+const DEFAULT_EXCLUDED_ELEMENTS = '.no-translate'
+
+// -----------------------------------------------------------------------------
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║  COMPRESSION / DECOMPRESSION HELPERS                                     ║
+// ╚══════════════════════════════════════════════════════════════════════════╝
+// -----------------------------------------------------------------------------
+
+/**
+ * Convenience wrapper around compressHTML() for a single HTML fragment.
+ */
+async function compressInlineStyling(htmlChunk: string, config: Configuration) {
+  const doc = await getSharedDoc()
+  const { compressedString, styleMap, hrefMap } = compressHTML(htmlChunk, doc, config)
+  return { compressed: compressedString, styleMap, hrefMap }
+}
+
+// cache a single document after the first call
+let sharedDocPromise: Promise<Document> | null = null
+async function getSharedDoc(): Promise<Document> {
+  if (!sharedDocPromise) {
+    sharedDocPromise = createDocument('<body></body>')
+  }
+  return sharedDocPromise
+}
+
+/**
+ * Walks a small HTML fragment, replacing inline‑formatting tags (<span>,
+ * <strong>, …) with neutral <styling_N> placeholders. A style map records the
+ * original tag + attributes so the fragment can later be reconstructed.
+ */
+function compressHTML(
+  htmlChunk: string,
+  doc: Document,
+  config: Configuration // Removed prefix parameter
+): CompressionResult {
+  const styleMap: { [ph: string]: OriginalTagInfo } = {}
+  const hrefMap: { [ph: string]: string } = {}
+  let counter = 0
+  let hrefCounter = 0
+  const container = doc.createElement('div')
+  container.innerHTML = htmlChunk
+
+  function walk(n: Node): string {
+    switch (n.nodeType) {
+      case Node.TEXT_NODE:
+        return n.textContent || ''
+      case Node.ELEMENT_NODE: {
+        const el = n as Element
+
+        // Compressing hrefs
+        if (el.tagName.toLowerCase() === 'a') {
+          // Generate generic placeholder without prefix
+          const ph = `HREF${hrefCounter++}`
+
+          // 1️⃣ Collect attributes for later restore
+          const restoreAttrs: Record<string, string> = { href: ph }
+
+          // 2️⃣ Build the *visible* attribute string – only translatable ones!
+          let attrString = ''
+          Array.from(el.attributes).forEach(({ name, value }) => {
+            if (name === 'href') {
+              hrefMap[ph] = value                         // <-- keep original URL
+            } else {
+              restoreAttrs[name] = value                  // <-- keep everything
+              if (TRANSLATABLE_ATTRIBUTES.has(name)) {
+                attrString += ` ${name}="${escapeAttribute(value)}"`
+              }
+            }
+          })
+
+          styleMap[ph] = { tagName: 'a', attributes: restoreAttrs }
+
+          // 3️⃣ Recurse into children
+          let inner = ''
+          el.childNodes.forEach(c => inner += walk(c))
+          return `<${ph}${attrString}>${inner}</${ph}>`
+        }
+
+        // Compressing form elements
+        const formElements = ['input', 'label', 'textarea', 'button', 'form']
+        if (formElements.includes(el.tagName.toLowerCase())) {
+          // Generate generic placeholder without prefix
+          const ph = `STY${counter++}`
+          const attrs: Record<string, string> = {}
+
+          // Build the visible attribute string for translatable attributes
+          let attrString = ''
+          Array.from(el.attributes).forEach(a => {
+            // Keep all attributes in the styleMap for restoration
+            attrs[a.name] = a.value
+
+            // Only show translatable attributes in the compressed output
+            if (TRANSLATABLE_ATTRIBUTES.has(a.name)) {
+              attrString += ` ${a.name}="${escapeAttribute(a.value)}"`
+            }
+          })
+
+          styleMap[ph] = { tagName: el.tagName, attributes: attrs }
+
+          // For self-closing elements like input, don't process children
+          if (['input'].includes(el.tagName.toLowerCase())) {
+            return `<${ph}${attrString}>`
+          }
+
+          // For other form elements, keep text content uncompressed
+          let inner = ''
+          el.childNodes.forEach(c => {
+            if (c.nodeType === Node.TEXT_NODE) {
+              // Keep text content as-is for translation
+              inner += c.textContent || ''
+            } else {
+              // Process other nodes normally
+              inner += walk(c)
+            }
+          })
+          return `<${ph}${attrString}>${inner}</${ph}>`
+        }
+
+        // Compressing no-translate and such ()
+        const excludedBlocks = config.excludedTranslationBlocks
+        const excluded = el.matches?.(DEFAULT_EXCLUDED_ELEMENTS) ||
+          (excludedBlocks?.some(block =>
+            Array.isArray(block.blocks) &&
+            block.blocks.some(item => el.matches?.(item.selector))
+          ))
+
+        if (excluded) {
+          // Generate generic placeholder without prefix
+          const ph = `EXCL${counter++}`
+          styleMap[ph] = { tagName: el.tagName, attributes: Object.fromEntries([...el.attributes].map(a => [a.name, a.value])) }
+
+          let inner = ''
+          el.childNodes.forEach(c => inner += walk(c))
+          return `<${ph}>${inner}</${ph}>`
+        }
+
+        if (el.tagName.toLowerCase() === 'img') {
+          // Generate generic placeholder without prefix
+          const ph = `STY${counter++}` // Using STY prefix, or could be IMG
+          const restoreAttrs: Record<string, string> = {}
+          let displayAttrsString = '' // Attributes visible to the translator
+
+          Array.from(el.attributes).forEach(attr => {
+            restoreAttrs[attr.name] = attr.value // Store ALL original attributes for restoration
+
+            // Only include TRANSLATABLE attributes (like alt, title) in the display string
+            if (TRANSLATABLE_ATTRIBUTES.has(attr.name.toLowerCase())) {
+              displayAttrsString += ` ${attr.name}="${escapeAttribute(attr.value)}"`
+            }
+          })
+
+          styleMap[ph] = { tagName: 'img', attributes: restoreAttrs }
+
+          // Return a self-closing placeholder with only translatable attributes
+          return `<${ph}${displayAttrsString}>`
+        }
+
+        if (isCompressibleInlineElement(el)) {
+          // Generate generic placeholder without prefix
+          const ph = `STY${counter++}`
+          const attrs: Record<string, string> = {}
+          Array.from(el.attributes).forEach(a => {
+            if (a.name === 'href') {
+              // Generate generic placeholder for href
+              const hrefPh = `HREF${hrefCounter++}`
+              hrefMap[hrefPh] = a.value
+              attrs[a.name] = hrefPh
+            } else {
+              attrs[a.name] = a.value
+            }
+          })
+
+          styleMap[ph] = { tagName: el.tagName, attributes: attrs }
+          let inner = ''
+          el.childNodes.forEach(c => (inner += walk(c)))
+          return `<${ph}>${inner}</${ph}>`
+        }
+        let inner = ''
+        el.childNodes.forEach(c => (inner += walk(c)))
+        const tag = el.tagName.toLowerCase()
+        let attrs = ''
+        Array.from(el.attributes).forEach(a => {
+          if (a.name === 'href') {
+            const hrefPh = `__HREF_${hrefCounter++}__` // This is a different placeholder type, keep as is for now
+            hrefMap[hrefPh] = a.value
+            attrs += ` href="${hrefPh}"`
+          } else {
+            attrs += ` ${a.name}="${escapeAttribute(a.value)}"`
+          }
+        })
+        const selfClose = ['br', 'hr', 'img', 'input', 'meta', 'link']
+        return selfClose.includes(tag) ? `<${tag}${attrs}>` : `<${tag}${attrs}>${inner}</${tag}>`
+      }
+      default:
+        return ''
+    }
+  }
+
+  let compressed = ''
+  container.childNodes.forEach(c => (compressed += walk(c)))
+  return { compressedString: compressed, styleMap, hrefMap }
+}
+
+/**
+ * Returns true if the element is a simple inline formatter that can be safely
+ * replaced by a placeholder (<strong>, <span>, …).
+ */
+function isCompressibleInlineElement(el: Element): boolean {
+  const tag = el.tagName.toLowerCase()
+  return new Set(['span', 'strong', 'em', 'i', 'b', 'u', 'sub', 'sup', 'mark', 'small', 'font', 'code']).has(tag)
+}
+
+/**
+ * Restores **all** href placeholders, regardless of any user-supplied
+ * prefix that was prepended in compressInlineStyling().
+ *
+ * (Using plain RegExp back-references proved too fragile once prefixes
+ * grew more complex, so we now simply stream-replace from the known map.)
+ */
+function restoreHrefs(html: string, hrefMap: Record<string, string>) {
+  for (const [ph, url] of Object.entries(hrefMap)) {
+    // the placeholder may occur several times → global replace
+    html = html.split(ph).join(escapeAttribute(url))
+  }
+  return html
+}
+
+/** Escapes attribute values when reconstructing decompressed HTML. */
+function escapeAttribute(v: string): string {
+  return v
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+}
+
+function shouldEscape(str: string): boolean {
+  // Matches <STY0>, <HREF1>, <EXCL2>, etc.
+  return !/<(?:STY|HREF|EXCL)\d+>/i.test(str);
 }
