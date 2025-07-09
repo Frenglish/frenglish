@@ -4,9 +4,9 @@
 import pkg from 'crypto-js'
 import type { JSDOM as JSDOMType } from 'jsdom'
 import { extractTextComponents } from './utils.js'
-import { CompressionResult, ExtractionResult, MasterStyleMap, OriginalTagInfo } from '@/types/html.js'
-import { Configuration } from '@/types/configuration.js'
-import { FlatJSON } from '@/types/translation.js'
+import { CompressionResult, ExtractionResult, MasterStyleMap, OriginalTagInfo } from '../types/html.js'
+import { Configuration } from '../types/configuration.js'
+import { FlatJSON } from '../types/translation.js'
 
 const { SHA256 } = pkg
 
