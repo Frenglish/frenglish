@@ -130,6 +130,7 @@ const textMap = await sdk.getTextMap();
    - Parameters:
      - `content`: string | string [] - Single string to translate or an array of strings to translate
      - `lang`: string - Target language code
+     - `isFullTranslation`: boolean (optional) - Whether to perform a full translation
      - `partialConfig`: PartialConfiguration (optional) - Configuration overrides
    - Returns: Promise<string | string[] | undefined>
 
