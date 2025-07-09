@@ -58,17 +58,17 @@ const generatePlaceholder = (txt: string) => SHA256(txt.trim()).toString()
 
 export type TextMaps = { forward: Record<string, string>; reverse: Record<string, string> }
 
-async function upsertPlaceholder(raw: string | undefined | null, maps: TextMaps, inject: boolean, config: Configuration, compress: boolean) {
+async function upsertPlaceholder(raw: string | undefined | null, maps: TextMaps, inject: boolean, config: Configuration, compress: boolean, masterStyleMap: MasterStyleMap) {
   if (!raw) return null
   const { leadingSpace, middleText, trailingSpace } = extractTextComponents(raw)
   if (!middleText) return null
 
   let compressedMiddleTextString: string
   if (compress) {
-    const compressedMiddleText = await compressInlineStyling(middleText, config)
-    compressedMiddleTextString = shouldEscape(compressedMiddleText.compressed)
-      ? escapeAttribute(compressedMiddleText.compressed)
-      : compressedMiddleText.compressed
+    const compressedMiddleText = await getCompressedInLineWithStyleMap(middleText, config, masterStyleMap)
+    compressedMiddleTextString = shouldEscape(compressedMiddleText)
+      ? escapeAttribute(compressedMiddleText)
+      : compressedMiddleText
   } else {
     compressedMiddleTextString = middleText
   }
@@ -130,7 +130,7 @@ export const shouldCollapse = (el: Element) => {
 // ---------------------------------------------------------------------------
 // Recursive processors
 // ---------------------------------------------------------------------------
-async function processAttributes(el: Element, maps: TextMaps, inject: boolean, config: Configuration, compress: boolean, injectDataKey: boolean) {
+async function processAttributes(el: Element, maps: TextMaps, inject: boolean, config: Configuration, compress: boolean, injectDataKey: boolean, masterStyleMap: MasterStyleMap) {
   const tag = el.tagName.toLowerCase()
 
   if (tag === 'title') {
@@ -140,7 +140,7 @@ async function processAttributes(el: Element, maps: TextMaps, inject: boolean, c
   for (const attr of TRANSLATABLE_ATTRIBUTES) {
     const val = el.getAttribute(attr)
     if (!val?.trim()) continue
-    const rep = await upsertPlaceholder(val, maps, inject, config, compress)
+    const rep = await upsertPlaceholder(val, maps, inject, config, compress, masterStyleMap)
     if (rep) el.setAttribute(attr, rep.newText)
   }
 
@@ -151,7 +151,7 @@ async function processAttributes(el: Element, maps: TextMaps, inject: boolean, c
     valAttr &&
     (tag === 'button' || tag === 'option' || (tag === 'input' && ['button', 'submit', 'reset'].includes(type)))
   ) {
-    const rep = await upsertPlaceholder(valAttr, maps, inject, config, compress)
+    const rep = await upsertPlaceholder(valAttr, maps, inject, config, compress, masterStyleMap)
     if (rep) el.setAttribute('value', rep.newText)
   }
 
@@ -172,7 +172,7 @@ async function processAttributes(el: Element, maps: TextMaps, inject: boolean, c
         'application-name',
       ].includes(name)
     ) {
-      const rep = await upsertPlaceholder(content, maps, inject, config, compress)
+      const rep = await upsertPlaceholder(content, maps, inject, config, compress, masterStyleMap)
       if (rep) el.setAttribute('content', rep.newText)
     }
     return
@@ -180,7 +180,7 @@ async function processAttributes(el: Element, maps: TextMaps, inject: boolean, c
 
   // <title>
   if (tag === 'title' && !el.hasAttribute(FRENGLISH_DATA_KEY)) {
-    const rep = await upsertPlaceholder(el.textContent, maps, inject, config, compress)
+    const rep = await upsertPlaceholder(el.textContent, maps, inject, config, compress, masterStyleMap)
     if (rep) {
       if (injectDataKey) el.setAttribute(FRENGLISH_DATA_KEY, rep.hash)
       el.textContent = rep.newText
@@ -188,15 +188,15 @@ async function processAttributes(el: Element, maps: TextMaps, inject: boolean, c
   }
 }
 
-async function processDataValue(val: any, maps: TextMaps, inject: boolean, config: Configuration, compress: boolean): Promise<any> {
+async function processDataValue(val: any, maps: TextMaps, inject: boolean, config: Configuration, compress: boolean, masterStyleMap: MasterStyleMap): Promise<any> {
   if (typeof val === 'string') {
-    const rep = await upsertPlaceholder(val, maps, inject, config, compress)
+    const rep = await upsertPlaceholder(val, maps, inject, config, compress, masterStyleMap)
     return rep?.newText
   }
-  if (Array.isArray(val)) return Promise.all(val.map(v => processDataValue(v, maps, inject, config, compress)))
+  if (Array.isArray(val)) return Promise.all(val.map(v => processDataValue(v, maps, inject, config, compress, masterStyleMap)))
   if (val && typeof val === 'object') {
     const out: Record<string, any> = {}
-    for (const [k, v] of Object.entries(val)) out[k] = await processDataValue(v, maps, inject, config, compress)
+    for (const [k, v] of Object.entries(val)) out[k] = await processDataValue(v, maps, inject, config, compress, masterStyleMap)
     return out
   }
   return val
@@ -211,8 +211,9 @@ export async function extractStrings(
   config: Configuration,
   compress = true,
   injectDataKey = true
-): Promise<ExtractionResult> {
+): Promise<ExtractionResult & { styleMap: MasterStyleMap }> {
   const maps: TextMaps = { forward: {}, reverse: {} }
+  const masterStyleMap:  MasterStyleMap  = {}
   const doc = await createDocument(html)
   const NodeConsts = doc.defaultView?.Node ?? { ELEMENT_NODE: 1, TEXT_NODE: 3 }
 
@@ -226,7 +227,7 @@ export async function extractStrings(
           try {
             const json = JSON.parse(el.textContent || '{}')
             if (json.props) {
-              await processDataValue(json.props, maps, injectPlaceholders, config, compress)
+              await processDataValue(json.props, maps, injectPlaceholders, config, compress, masterStyleMap)
               if (injectPlaceholders) el.textContent = JSON.stringify(json)
             }
           } catch {
@@ -237,7 +238,7 @@ export async function extractStrings(
       }
 
       if (el.classList.contains('ionicon')) {
-        await processAttributes(el, maps, injectPlaceholders, config, compress, injectDataKey)
+        await processAttributes(el, maps, injectPlaceholders, config, compress, injectDataKey, masterStyleMap)
         return
       }
 
@@ -246,16 +247,16 @@ export async function extractStrings(
       }
 
       if (shouldCollapse(el)) {
-        const rep = await upsertPlaceholder(el.innerHTML, maps, injectPlaceholders, config, compress)
+        const rep = await upsertPlaceholder(el.innerHTML, maps, injectPlaceholders, config, compress, masterStyleMap)
         if (rep) {
           if (injectDataKey) el.setAttribute(FRENGLISH_DATA_KEY, rep.hash)
           el.innerHTML = rep.newText
-          await processAttributes(el, maps, injectPlaceholders, config, compress, injectDataKey)
+          await processAttributes(el, maps, injectPlaceholders, config, compress, injectDataKey, masterStyleMap)
         }
         return
       }
 
-      await processAttributes(el, maps, injectPlaceholders, config, compress, injectDataKey)
+      await processAttributes(el, maps, injectPlaceholders, config, compress, injectDataKey, masterStyleMap)
 
       // recursive
       for (const child of el.childNodes) {
@@ -271,7 +272,7 @@ export async function extractStrings(
 
       // special handling for <title>
       if (pTag === 'title') {
-        const rep = await upsertPlaceholder(node.textContent, maps, injectPlaceholders, config, compress)
+        const rep = await upsertPlaceholder(node.textContent, maps, injectPlaceholders, config, compress, masterStyleMap)
         if (rep) {
           if (injectDataKey) parent.setAttribute(FRENGLISH_DATA_KEY, rep.hash)
           node.textContent = rep.newText
@@ -288,7 +289,7 @@ export async function extractStrings(
         return
       }
 
-      const rep = await upsertPlaceholder(node.textContent, maps, injectPlaceholders, config, compress)
+      const rep = await upsertPlaceholder(node.textContent, maps, injectPlaceholders, config, compress, masterStyleMap)
       if (rep) {
         const span = doc.createElement('span')
         if (injectDataKey) span.setAttribute(FRENGLISH_DATA_KEY, rep.hash)
@@ -310,7 +311,24 @@ export async function extractStrings(
     }
   }
 
-  return { modifiedHtml: doc.documentElement.outerHTML, textMap: maps.forward }
+  return {
+    modifiedHtml: doc.documentElement.outerHTML,
+    textMap: maps.forward,
+    styleMap: masterStyleMap,
+  }
+}
+
+async function getCompressedInLineWithStyleMap(
+  htmlChunk: string,
+  config:   Configuration,
+  map:      MasterStyleMap
+): Promise<string> {
+  const { compressed, styleMap, hrefMap } =
+          await compressInlineStyling(htmlChunk, config)
+
+  const hash = SHA256(compressed).toString()
+  map[hash]  = { styleMap, hrefMap }
+  return compressed
 }
 
 // Sets HTML element language
@@ -386,7 +404,7 @@ export function decompressHTML(
     }
 
     // Handle self-closing elements
-    const selfClosingTags = ['input', 'img', 'br', 'hr', 'meta', 'link']
+    const selfClosingTags = ['input', 'img', 'br', 'hr', 'meta', 'link', 'wbr', 'area', 'base', 'col', 'embed', 'param', 'source', 'track']
     if (selfClosingTags.includes(info.tagName.toLowerCase())) {
       return `<${info.tagName.toLowerCase()}${attrString}>`
     }
@@ -460,7 +478,6 @@ export async function compressHTMLTextMapValues(
   };
 }
 
-
 // -----------------------------------------------------------------------------
 // ╔══════════════════════════════════════════════════════════════════════════╗
 // ║  DEFAULTS                                                                ║
@@ -516,6 +533,17 @@ function compressHTML(
         return n.textContent || ''
       case Node.ELEMENT_NODE: {
         const el = n as Element
+        const tagName = el.tagName.toLowerCase()
+
+        if (tagName === 'br' || tagName === 'hr' || tagName === 'wbr' || tagName === 'area' || tagName === 'base' || tagName ==='col'
+          || tagName === 'embed' || tagName === 'param' || tagName === 'source' || tagName === 'track') {
+          const ph = `STY${counter++}`
+          styleMap[ph] = {
+            tagName,
+            attributes: Object.fromEntries([...el.attributes].map(a => [a.name, a.value])),
+          }
+          return `<${ph}>`
+        }
 
         // Compressing hrefs
         if (el.tagName.toLowerCase() === 'a') {
@@ -658,7 +686,7 @@ function compressHTML(
             attrs += ` ${a.name}="${escapeAttribute(a.value)}"`
           }
         })
-        const selfClose = ['br', 'hr', 'img', 'input', 'meta', 'link']
+        const selfClose = ['br', 'hr', 'img', 'input', 'meta', 'link', 'wbr', 'area', 'base', 'col', 'embed', 'param', 'source', 'track']
         return selfClose.includes(tag) ? `<${tag}${attrs}>` : `<${tag}${attrs}>${inner}</${tag}>`
       }
       default:
@@ -677,7 +705,10 @@ function compressHTML(
  */
 function isCompressibleInlineElement(el: Element): boolean {
   const tag = el.tagName.toLowerCase()
-  return new Set(['span', 'strong', 'em', 'i', 'b', 'u', 'sub', 'sup', 'mark', 'small', 'font', 'code']).has(tag)
+  return new Set([
+    'span', 'strong', 'em', 'i', 'b', 'u', 'sub', 'sup', 'mark', 'small', 'font', 'code',
+    'abbr','cite','bdi','bdo','del','ins','kbd','q','samp','var'
+  ]).has(tag)
 }
 
 /**
