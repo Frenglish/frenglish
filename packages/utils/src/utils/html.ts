@@ -2,7 +2,7 @@
 // Constants
 // ---------------------------------------------------------------------------
 import pkg from 'crypto-js'
-import type { JSDOM as JSDOMType } from 'jsdom'
+import type { JSDOM as JSDOMType,  VirtualConsole as VirtualConsoleType } from 'jsdom'
 import { extractTextComponents } from './utils.js'
 import { CompressionResult, ExtractionResult, MasterStyleMap, OriginalTagInfo } from '../types/html.js'
 import { Configuration } from '../types/configuration.js'
@@ -96,11 +96,26 @@ async function upsertPlaceholder(raw: string | undefined | null, maps: TextMaps,
 }
 
 export async function createDocument(html: string): Promise<Document> {
-  if (typeof window !== 'undefined' && window.document && !(globalThis as any).IS_UNIT_TEST) {
-    return window.document
-  }
-  const { JSDOM } = (await import('jsdom')) as { JSDOM: typeof JSDOMType }
-  return new JSDOM(html).window.document
+  // Import JSDOM and VirtualConsole
+  const { JSDOM, VirtualConsole } = (await import('jsdom')) as { JSDOM: typeof JSDOMType, VirtualConsole: typeof VirtualConsoleType };
+
+  const virtualConsole = new VirtualConsole();
+
+  // Listen for the generic 'jsdomError' event, which is type-safe.
+  virtualConsole.on('jsdomError', (e) => {
+    // Inside the handler, check if the error message is the one we want to suppress.
+    if (e.message.includes('Could not parse CSS stylesheet')) {
+      // If it is, simply return and do nothing, effectively silencing the error.
+      return;
+    }
+  });
+
+  // Pass the configured virtual console in the JSDOM options
+  const dom = new JSDOM(html, {
+    virtualConsole,
+  });
+
+  return dom.window.document;
 }
 
 // ---------------------------------------------------------------------------
