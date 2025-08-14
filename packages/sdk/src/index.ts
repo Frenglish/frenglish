@@ -1,10 +1,11 @@
 // src/index.ts
-import { PartialConfiguration, Configuration, FlatJSON, Project, FileContentWithLanguage, TranslationResponse, TranslationStatus, Invitation } from '@frenglish/utils'
+import { PartialConfiguration, Configuration, FlatJSON, Project, FileContentWithLanguage, TranslationResponse, TranslationStatus, Invitation, TextAndStyleMapResponse } from '@frenglish/utils'
 import {
   translate as translateUtil,
   translateString as translateStringUtil,
   getTranslationStatus as getTranslationStatusUtil,
   getTranslationContent as getTranslationContentUtil,
+  getTextAndStyleMap as getTextAndStyleMapUtil,
   getTextMap as getTextMapUtil,
   getSupportedFileTypes as getSupportedFileTypesUtil,
   getSupportedLanguages as getSupportedLanguagesUtil,
@@ -129,6 +130,14 @@ export interface FrenglishSDK {
    * @throws {Error} If content retrieval fails
    */
   getTranslationContent(translationId: number): Promise<TranslationResponse[]>;
+
+   /**
+   * Retrieves the project's text map and style map, which contains mappings of text content.
+   *
+   * @returns Text map and style mapcontent if exists, null otherwise
+   * @throws {Error} If text map retrieval fails
+   */
+  getTextAndStyleMap(): Promise<{ content: TextAndStyleMapResponse } | null>;
 
   /**
    * Retrieves the project's text map, which contains mappings of text content.
@@ -313,6 +322,10 @@ export function FrenglishSDK(apiKey: string): FrenglishSDK {
 
     getTextMap: async () => {
       return getTextMapUtil(apiKey)
+    },
+
+    getTextAndStyleMap: async () => {
+      return getTextAndStyleMapUtil(apiKey)
     },
 
     getDefaultConfiguration: async () => {

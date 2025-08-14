@@ -7,6 +7,7 @@ import {
   FileContentWithLanguage,
   CompletedTranslationResponse,
   FlatJSON,
+  TextAndStyleMapResponse,
 } from '@frenglish/utils'
 import { apiRequest } from './api.js'
 
@@ -215,6 +216,26 @@ export async function getTranslationContent(translationId: number, apiKey: strin
     },
     errorContext: 'Failed to get translation content',
   })
+}
+
+/**
+ * Fetches the project's current text map and the corresponding style map.
+ * The text map contains all translations, while the style map is crucial for
+ * correctly decompressing and rendering any HTML content within the translations.
+ *
+ * @param {string} apiKey - Your public or private API key.
+ * @returns {Promise<TextAndStyleMapResponse | null>} A promise that resolves to:
+ * - An object containing both the textMap and styleMap if they exist.
+ * - null if either map does not exist for the project.
+ * @throws If the API request fails.
+ */
+export async function getTextAndStyleMap(apiKey: string): Promise<{ content: TextAndStyleMapResponse } | null> {
+  return apiRequest<{ content: TextAndStyleMapResponse } | null>('/api/project/request-text-and-style-map', {
+    body: {
+      apiKey,
+    },
+    errorContext: 'Failed to fetch project text and style maps',
+  });
 }
 
 /**

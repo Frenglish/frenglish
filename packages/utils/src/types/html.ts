@@ -1,3 +1,5 @@
+import { FlatJSON } from "./translation";
+
 export interface ExtractStringsOptions {
   /** collect selector / attribute info for each string */
   captureContext?: boolean;
@@ -35,5 +37,10 @@ export type MasterStyleMap = {
 export type CompressionResult = {
     compressedString: string;
     styleMap: { [ph: string]: OriginalTagInfo };
-    hrefMap: { [ph: string]: string };          // NEW
+    hrefMap: { [ph: string]: string };
+}
+
+export interface TextAndStyleMapResponse {
+  textMap: FlatJSON[];
+  styleMap: Record<string, MasterStyleMap>;
 }
