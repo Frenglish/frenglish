@@ -50,7 +50,7 @@ const HEAVY_LEAF_SELECTOR =
   'script,style,iframe,video,audio,object,embed,canvas,noscript,svg,' +
   'table,ul,ol,dl,div:not(:empty),' + COLLAPSIBLE_TAGS.join(',')
 
-export const PLACEHOLDER_TAG_RE = /<(?:STY|HREF|EXCL)\d+\b[^>]*>/i;
+export const PLACEHOLDER_TAG_RE = /<(?:sty|href|excl)\d+\b[^>]*>/i;
 // ---------------------------------------------------------------------------
 // Utility helpers
 // ---------------------------------------------------------------------------
@@ -66,11 +66,9 @@ async function upsertPlaceholder(raw: string | undefined | null, maps: TextMaps,
   let compressedMiddleTextString: string
   if (compress) {
     const compressedMiddleText = await getCompressedInLineWithStyleMap(middleText, config, masterStyleMap)
-    compressedMiddleTextString = shouldEscape(compressedMiddleText)
-      ? escapeAttribute(compressedMiddleText)
-      : compressedMiddleText
+    compressedMiddleTextString = compressedMiddleText
   } else {
-    compressedMiddleTextString = middleText
+    compressedMiddleTextString = unescapeHtml(middleText)
   }
   
   const PH_TAG_RE = /<(\/?)(sty|href|excl)(\d+)([^>]*)>/gi;
@@ -82,7 +80,7 @@ async function upsertPlaceholder(raw: string | undefined | null, maps: TextMaps,
       prefix: string,
       num: string,
       rest: string = ''
-    ) => `<${slash}${prefix.toUpperCase()}${num}${rest}>`
+    ) => `<${slash}${prefix.toLowerCase()}${num}${rest}>`
   );
 
   let hash = maps.reverse[compressedMiddleTextString]
@@ -382,7 +380,7 @@ export function decompressHTML(
 
   // Compression wrappers: hrefs, styling and exclusions
   // Updated RE to match generic placeholders like <STY0>, <HREF0>, <EXCL0>
-  const RE = /<((?:STY|HREF|EXCL)\d+)([^>]*)>(?:([\s\S]*?)<\/\1>)?/gi
+  const RE = /<((?:sty|href|excl)\d+)([^>]*)>(?:([\s\S]*?)<\/\1>)?/gi
 
   out = out.replace(RE, (m, phTag, newAttrs, content) => {
     const info = styleMap[phTag]
@@ -530,14 +528,14 @@ function compressHTML(
   function walk(n: Node): string {
     switch (n.nodeType) {
       case Node.TEXT_NODE:
-        return n.textContent || ''
+        return unescapeHtml(n.textContent || '')
       case Node.ELEMENT_NODE: {
         const el = n as Element
         const tagName = el.tagName.toLowerCase()
 
         if (tagName === 'br' || tagName === 'hr' || tagName === 'wbr' || tagName === 'area' || tagName === 'base' || tagName ==='col'
           || tagName === 'embed' || tagName === 'param' || tagName === 'source' || tagName === 'track') {
-          const ph = `STY${counter++}`
+          const ph = `sty${counter++}`
           styleMap[ph] = {
             tagName,
             attributes: Object.fromEntries([...el.attributes].map(a => [a.name, a.value])),
@@ -548,7 +546,7 @@ function compressHTML(
         // Compressing hrefs
         if (el.tagName.toLowerCase() === 'a') {
           // Generate generic placeholder without prefix
-          const ph = `HREF${hrefCounter++}`
+          const ph = `href${hrefCounter++}`
 
           // 1️⃣ Collect attributes for later restore
           const restoreAttrs: Record<string, string> = { href: ph }
@@ -578,7 +576,7 @@ function compressHTML(
         const formElements = ['input', 'label', 'textarea', 'button', 'form']
         if (formElements.includes(el.tagName.toLowerCase())) {
           // Generate generic placeholder without prefix
-          const ph = `STY${counter++}`
+          const ph = `sty${counter++}`
           const attrs: Record<string, string> = {}
 
           // Build the visible attribute string for translatable attributes
@@ -624,7 +622,7 @@ function compressHTML(
 
         if (excluded) {
           // Generate generic placeholder without prefix
-          const ph = `EXCL${counter++}`
+          const ph = `excl${counter++}`
           styleMap[ph] = { tagName: el.tagName, attributes: Object.fromEntries([...el.attributes].map(a => [a.name, a.value])) }
 
           let inner = ''
@@ -634,7 +632,7 @@ function compressHTML(
 
         if (el.tagName.toLowerCase() === 'img') {
           // Generate generic placeholder without prefix
-          const ph = `STY${counter++}` // Using STY prefix, or could be IMG
+          const ph = `sty${counter++}` // Using STY prefix, or could be IMG
           const restoreAttrs: Record<string, string> = {}
           let displayAttrsString = '' // Attributes visible to the translator
 
@@ -655,12 +653,12 @@ function compressHTML(
 
         if (isCompressibleInlineElement(el)) {
           // Generate generic placeholder without prefix
-          const ph = `STY${counter++}`
+          const ph = `sty${counter++}`
           const attrs: Record<string, string> = {}
           Array.from(el.attributes).forEach(a => {
             if (a.name === 'href') {
               // Generate generic placeholder for href
-              const hrefPh = `HREF${hrefCounter++}`
+              const hrefPh = `href${hrefCounter++}`
               hrefMap[hrefPh] = a.value
               attrs[a.name] = hrefPh
             } else {
@@ -728,15 +726,33 @@ function restoreHrefs(html: string, hrefMap: Record<string, string>) {
 
 /** Escapes attribute values when reconstructing decompressed HTML. */
 function escapeAttribute(v: string): string {
+  if (!v) return '';
   return v
-    .replace(/&/g, '&amp;')
+    .replace(/&(?![a-zA-Z0-9#]+;)/g, '&amp;')
     .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;')
+    .replace(/'/g, '&#39;') // &#39; is more universally compatible than &apos;
     .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
+    .replace(/>/g, '&gt;');
+}
+
+/**
+ * Decodes common HTML entities to create a plain text representation.
+ * This is crucial for normalization before hashing.
+ * The order of replacement is important: &amp; must be first.
+ */
+function unescapeHtml(v: string): string {
+    if (!v) return '';
+    return v
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+        .replace(/&apos;/g, "'")
+        .replace(/&nbsp;/g, ' ');
 }
 
 function shouldEscape(str: string): boolean {
   // Matches <STY0>, <HREF1>, <EXCL2>, etc.
-  return !/<(?:STY|HREF|EXCL)\d+>/i.test(str);
+  return !/<(?:sty|href|excl)\d+>/i.test(str);
 }
