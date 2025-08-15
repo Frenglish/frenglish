@@ -42,6 +42,38 @@ const ATOMIC_CHILD_SET = new Set([
   'img', 'a', 'picture', 'source',
 ])
 
+const DO_NOT_COLLAPSE_CLASSES = new Set([
+  // --- Navigation & Interactive ---
+  'awb-menu__li',
+  'awb-submenu__li',
+  'menu-item',
+  'breadcrumb',
+  'pagination',
+  'page-numbers',
+  'tab',
+
+  // --- Layout & Grid (Page Builders) ---
+  'card',
+  'col',
+  'column',
+  'fusion-builder-column',
+  'fusion-layout-column',
+  'elementor-widget-container',
+  'pricing-table',
+
+  // --- Widgets & Modules ---
+  'slide',
+  'carousel-item',
+  'swiper-slide',
+  'accordion-item',
+  'testimonial',
+  'modal',
+
+  // --- Forms ---
+  'form-group',
+  'form-row',
+]);
+
 // – Tags (and matching <script> / <style>) that we *never* walk for text
 export const SKIPPED_TAGS = new Set(['script', 'style', 'noscript', 'code', 'pre', 'template', 'svg'])
 
@@ -96,6 +128,10 @@ async function upsertPlaceholder(raw: string | undefined | null, maps: TextMaps,
 }
 
 export async function createDocument(html: string): Promise<Document> {
+  // IMPORTANT: Do not remove this because this cannot load in the frontend.
+  if (typeof window !== 'undefined' && window.document && !(globalThis as any).IS_UNIT_TEST) {
+    return window.document
+  }
   // Import JSDOM and VirtualConsole
   const { JSDOM, VirtualConsole } = (await import('jsdom')) as { JSDOM: typeof JSDOMType, VirtualConsole: typeof VirtualConsoleType };
 
@@ -131,19 +167,29 @@ const isAtomicContainer = (el: Element) => {
 }
 
 export const shouldCollapse = (el: Element) => {
-  const tag = el.tagName.toLowerCase()
-  if (tag === 'html' || tag === 'head' || tag === 'body' || SKIPPED_TAGS.has(tag)) return false
-  if (el.hasAttribute(FRENGLISH_DATA_KEY)) return false
-  if (el.querySelector(HEAVY_LEAF_SELECTOR)) return false
-  if (isAtomicContainer(el)) return false
-  if (tag === 'a' || COLLAPSIBLE_SET.has(tag)) return !!el.textContent?.trim()
-  return false
-}
+  for (const className of DO_NOT_COLLAPSE_CLASSES) {
+    if (el.classList.contains(className)) {
+      return false;
+    }
+  }
+
+  if (Array.from(el.classList).some(cls => cls.startsWith('col-') || cls.startsWith('wp-block-'))) {
+    return false;
+  }
+
+  const tag = el.tagName.toLowerCase();
+  if (tag === 'html' || tag === 'head' || tag === 'body' || SKIPPED_TAGS.has(tag)) return false;
+  if (el.hasAttribute(FRENGLISH_DATA_KEY)) return false;
+  if (el.querySelector(HEAVY_LEAF_SELECTOR)) return false;
+  if (isAtomicContainer(el)) return false;
+  if (tag === 'a' || COLLAPSIBLE_SET.has(tag)) return !!el.textContent?.trim();
+  return false;
+};
 
 // ---------------------------------------------------------------------------
 // Recursive processors
 // ---------------------------------------------------------------------------
-async function processAttributes(el: Element, maps: TextMaps, inject: boolean, config: Configuration, compress: boolean, injectDataKey: boolean, masterStyleMap: MasterStyleMap) {
+async function processAttributes(el: Element, maps: TextMaps, inject: boolean, config: Configuration, compress: boolean, injectDataKey: boolean, masterStyleMap: MasterStyleMap, currentLanguage?: string) {
   const tag = el.tagName.toLowerCase()
 
   if (tag === 'title') {
@@ -154,7 +200,12 @@ async function processAttributes(el: Element, maps: TextMaps, inject: boolean, c
     const val = el.getAttribute(attr)
     if (!val?.trim()) continue
     const rep = await upsertPlaceholder(val, maps, inject, config, compress, masterStyleMap)
-    if (rep) el.setAttribute(attr, rep.newText)
+    if (rep) {
+      el.setAttribute(attr, rep.newText)
+      if (injectDataKey && !el.firstElementChild) {
+        el.setAttribute(FRENGLISH_DATA_KEY, rep.hash)
+      }
+    }
   }
 
   // value="…" on buttons / inputs
@@ -186,9 +237,18 @@ async function processAttributes(el: Element, maps: TextMaps, inject: boolean, c
       ].includes(name)
     ) {
       const rep = await upsertPlaceholder(content, maps, inject, config, compress, masterStyleMap)
-      if (rep) el.setAttribute('content', rep.newText)
+      if (rep) {
+        el.setAttribute('content', rep.newText)
+        if (injectDataKey && !el.firstElementChild) {
+           el.setAttribute(FRENGLISH_DATA_KEY, rep.hash)
+        }
+      }
     }
     return
+  }
+
+  if (currentLanguage) {
+    el.setAttribute('translated-lang', currentLanguage)
   }
 
   // <title>
@@ -223,7 +283,8 @@ export async function extractStrings(
   injectPlaceholders = true,
   config: Configuration,
   compress = true,
-  injectDataKey = true
+  injectDataKey = true,
+  currentLanguage: string
 ): Promise<ExtractionResult & { styleMap: MasterStyleMap }> {
   const maps: TextMaps = { forward: {}, reverse: {} }
   const masterStyleMap:  MasterStyleMap  = {}
@@ -250,8 +311,12 @@ export async function extractStrings(
         return
       }
 
+      if (el.hasAttribute(FRENGLISH_DATA_KEY)) {
+        return;
+      }
+
       if (el.classList.contains('ionicon')) {
-        await processAttributes(el, maps, injectPlaceholders, config, compress, injectDataKey, masterStyleMap)
+        await processAttributes(el, maps, injectPlaceholders, config, compress, injectDataKey, masterStyleMap, currentLanguage)
         return
       }
 
@@ -264,12 +329,12 @@ export async function extractStrings(
         if (rep) {
           if (injectDataKey) el.setAttribute(FRENGLISH_DATA_KEY, rep.hash)
           el.innerHTML = rep.newText
-          await processAttributes(el, maps, injectPlaceholders, config, compress, injectDataKey, masterStyleMap)
+          await processAttributes(el, maps, injectPlaceholders, config, compress, injectDataKey, masterStyleMap, currentLanguage)
         }
         return
       }
 
-      await processAttributes(el, maps, injectPlaceholders, config, compress, injectDataKey, masterStyleMap)
+      await processAttributes(el, maps, injectPlaceholders, config, compress, injectDataKey, masterStyleMap, currentLanguage)
 
       // recursive
       for (const child of el.childNodes) {
