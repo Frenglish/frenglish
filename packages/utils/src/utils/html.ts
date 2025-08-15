@@ -334,12 +334,13 @@ export async function extractStrings(
         return
       }
 
-      await processAttributes(el, maps, injectPlaceholders, config, compress, injectDataKey, masterStyleMap, currentLanguage)
-
       // recursive
       for (const child of el.childNodes) {
         await walk(child)
       }
+
+      await processAttributes(el, maps, injectPlaceholders, config, compress, injectDataKey, masterStyleMap, currentLanguage)
+
       return
     }
 
