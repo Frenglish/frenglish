@@ -2,7 +2,7 @@
 // Constants
 // ---------------------------------------------------------------------------
 import pkg from 'crypto-js'
-import type { JSDOM as JSDOMType,  VirtualConsole as VirtualConsoleType } from 'jsdom'
+import type { JSDOM as JSDOMType, VirtualConsole as VirtualConsoleType } from 'jsdom'
 import { extractTextComponents } from './utils.js'
 import { CompressionResult, ExtractionResult, MasterStyleMap, OriginalTagInfo } from '../types/html.js'
 import { Configuration } from '../types/configuration.js'
@@ -31,7 +31,8 @@ export const TRANSLATABLE_ATTRIBUTES = new Set([
 const COLLAPSIBLE_TAGS = [
   'p', 'li', 'dt', 'dd', 'caption',
   'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-  'legend', 'summary', 'th', 'td', 'div',
+  'legend', 'summary', 'th', 'td', 'div', 'button',
+  'a', 'label', 'span'
 ]
 const COLLAPSIBLE_SET = new Set(COLLAPSIBLE_TAGS)
 
@@ -79,7 +80,7 @@ export const SKIPPED_TAGS = new Set(['script', 'style', 'noscript', 'code', 'pre
 
 // – Heavy / structural nodes that force a parent not to collapse
 const HEAVY_LEAF_SELECTOR =
-  'script,style,iframe,video,audio,object,embed,canvas,noscript,svg,' +
+  'script,style,iframe,video,audio,object,embed,canvas,noscript,svg' +
   'table,ul,ol,dl,div:not(:empty),' + COLLAPSIBLE_TAGS.join(',')
 
 export const PLACEHOLDER_TAG_RE = /<(?:sty|href|excl)\d+\b[^>]*>/i;
@@ -102,7 +103,7 @@ async function upsertPlaceholder(raw: string | undefined | null, maps: TextMaps,
   } else {
     compressedMiddleTextString = unescapeHtml(middleText)
   }
-  
+
   const PH_TAG_RE = /<(\/?)(sty|href|excl)(\d+)([^>]*)>/gi;
   compressedMiddleTextString = compressedMiddleTextString.replace(
     PH_TAG_RE,
@@ -202,8 +203,9 @@ async function processAttributes(el: Element, maps: TextMaps, inject: boolean, c
     const rep = await upsertPlaceholder(val, maps, inject, config, compress, masterStyleMap)
     if (rep) {
       el.setAttribute(attr, rep.newText)
-      if (injectDataKey && !el.firstElementChild) {
-        el.setAttribute(FRENGLISH_DATA_KEY, rep.hash)
+      if (injectDataKey) {
+        const attributeSpecificKey = `${FRENGLISH_DATA_KEY}-${attr}`
+        el.setAttribute(attributeSpecificKey, rep.hash)
       }
     }
   }
@@ -238,9 +240,10 @@ async function processAttributes(el: Element, maps: TextMaps, inject: boolean, c
     ) {
       const rep = await upsertPlaceholder(content, maps, inject, config, compress, masterStyleMap)
       if (rep) {
-        el.setAttribute('content', rep.newText)
-        if (injectDataKey && !el.firstElementChild) {
-           el.setAttribute(FRENGLISH_DATA_KEY, rep.hash)
+        el.setAttribute('content', rep.newText);
+        if (injectDataKey) {
+          const metaContentKey = `${FRENGLISH_DATA_KEY}-content`;
+          el.setAttribute(metaContentKey, rep.hash);
         }
       }
     }
@@ -287,7 +290,7 @@ export async function extractStrings(
   currentLanguage: string
 ): Promise<ExtractionResult & { styleMap: MasterStyleMap }> {
   const maps: TextMaps = { forward: {}, reverse: {} }
-  const masterStyleMap:  MasterStyleMap  = {}
+  const masterStyleMap: MasterStyleMap = {}
   const doc = await createDocument(html)
   const NodeConsts = doc.defaultView?.Node ?? { ELEMENT_NODE: 1, TEXT_NODE: 3 }
 
@@ -309,6 +312,14 @@ export async function extractStrings(
           }
         }
         return
+      }
+
+      const isIconElement = (tag === 'a' || tag === 'i' || tag === 'span') && !el.textContent?.trim();
+      const hasIconClass = Array.from(el.classList).some(cls => cls.includes('icon') || cls.includes('ionicon'));
+
+      if (isIconElement && hasIconClass) {
+        await processAttributes(el, maps, injectPlaceholders, config, compress, injectDataKey, masterStyleMap, currentLanguage);
+        return;
       }
 
       if (el.hasAttribute(FRENGLISH_DATA_KEY)) {
@@ -335,7 +346,7 @@ export async function extractStrings(
       }
 
       // recursive
-      for (const child of el.childNodes) {
+      for (const child of [...el.childNodes]) {
         await walk(child)
       }
 
@@ -380,12 +391,12 @@ export async function extractStrings(
 
   // process head and body
   if (doc.head) {
-    for (const node of doc.head.childNodes) {
+    for (const node of [...doc.head.childNodes]) {
       await walk(node)
     }
   }
   if (doc.body) {
-    for (const node of doc.body.childNodes) {
+    for (const node of [...doc.body.childNodes]) {
       await walk(node)
     }
   }
@@ -399,14 +410,14 @@ export async function extractStrings(
 
 async function getCompressedInLineWithStyleMap(
   htmlChunk: string,
-  config:   Configuration,
-  map:      MasterStyleMap
+  config: Configuration,
+  map: MasterStyleMap
 ): Promise<string> {
   const { compressed, styleMap, hrefMap } =
-          await compressInlineStyling(htmlChunk, config)
+    await compressInlineStyling(htmlChunk, config)
 
   const hash = SHA256(compressed).toString()
-  map[hash]  = { styleMap, hrefMap }
+  map[hash] = { styleMap, hrefMap }
   return compressed
 }
 
@@ -457,6 +468,8 @@ export function decompressHTML(
   styleMap: Record<string, OriginalTagInfo>,
   hrefMap: Record<string, string> = {},
 ): string {
+  styleMap = styleMap || {}
+
   let out = compressedString
 
   // Compression wrappers: hrefs, styling and exclusions
@@ -474,7 +487,8 @@ export function decompressHTML(
     )
 
     /* 2️⃣ merge: translator wins over original */
-    const final: Record<string, string> = { ...info.attributes, ...parsed }
+    const final: Record<string, string> = { ...(info.attributes || {}), ...parsed };
+
 
     /* 3️⃣ serialize */
     let attrString = ''
@@ -501,8 +515,8 @@ export function decompressHTML(
       const info = styleMap[phTag]
       if (!info) return m
       let attrs = ''
-      for (const [k, v] of Object.entries(info.attributes)) {
-        attrs += ` ${k}="${escapeAttribute(v)}"`
+      for (const [k, v] of Object.entries(info.attributes || {})) {
+        attrs += ` ${k}="${escapeAttribute(v)}"`;
       }
 
       // Handle self-closing elements
@@ -614,7 +628,7 @@ function compressHTML(
         const el = n as Element
         const tagName = el.tagName.toLowerCase()
 
-        if (tagName === 'br' || tagName === 'hr' || tagName === 'wbr' || tagName === 'area' || tagName === 'base' || tagName ==='col'
+        if (tagName === 'br' || tagName === 'hr' || tagName === 'wbr' || tagName === 'area' || tagName === 'base' || tagName === 'col'
           || tagName === 'embed' || tagName === 'param' || tagName === 'source' || tagName === 'track') {
           const ph = `sty${counter++}`
           styleMap[ph] = {
@@ -786,7 +800,7 @@ function isCompressibleInlineElement(el: Element): boolean {
   const tag = el.tagName.toLowerCase()
   return new Set([
     'span', 'strong', 'em', 'i', 'b', 'u', 'sub', 'sup', 'mark', 'small', 'font', 'code',
-    'abbr','cite','bdi','bdo','del','ins','kbd','q','samp','var'
+    'abbr', 'cite', 'bdi', 'bdo', 'del', 'ins', 'kbd', 'q', 'samp', 'var'
   ]).has(tag)
 }
 
@@ -822,15 +836,15 @@ function escapeAttribute(v: string): string {
  * The order of replacement is important: &amp; must be first.
  */
 function unescapeHtml(v: string): string {
-    if (!v) return '';
-    return v
-        .replace(/&amp;/g, '&')
-        .replace(/&lt;/g, '<')
-        .replace(/&gt;/g, '>')
-        .replace(/&quot;/g, '"')
-        .replace(/&#39;/g, "'")
-        .replace(/&apos;/g, "'")
-        .replace(/&nbsp;/g, ' ');
+  if (!v) return '';
+  return v
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/&nbsp;/g, ' ');
 }
 
 function shouldEscape(str: string): boolean {
