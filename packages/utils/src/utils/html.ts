@@ -80,7 +80,7 @@ export const SKIPPED_TAGS = new Set(['script', 'style', 'noscript', 'code', 'pre
 
 // – Heavy / structural nodes that force a parent not to collapse
 const HEAVY_LEAF_SELECTOR =
-  'script,style,iframe,video,audio,object,embed,canvas,noscript,svg' +
+  'script,style,iframe,video,audio,object,embed,canvas,noscript,svg,' +
   'table,ul,ol,dl,div:not(:empty),' + COLLAPSIBLE_TAGS.join(',')
 
 export const PLACEHOLDER_TAG_RE = /<(?:sty|href|excl)\d+\b[^>]*>/i;
@@ -345,9 +345,10 @@ export async function extractStrings(
         return
       }
 
-      // recursive
-      for (const child of [...el.childNodes]) {
-        await walk(child)
+      const childrenSnapshot = [...el.childNodes]
+      for (const child of childrenSnapshot) {
+        if ('isConnected' in child && !child.isConnected) continue
+        await walk(child);
       }
 
       await processAttributes(el, maps, injectPlaceholders, config, compress, injectDataKey, masterStyleMap, currentLanguage)
@@ -357,6 +358,8 @@ export async function extractStrings(
 
     if (node.nodeType === NodeConsts.TEXT_NODE) {
       const parent = node.parentElement
+      const text = node as Text
+
       if (!parent || !node.textContent?.trim()) return
       const pTag = parent.tagName.toLowerCase()
 
@@ -384,12 +387,25 @@ export async function extractStrings(
         const span = doc.createElement('span')
         if (injectDataKey) span.setAttribute(FRENGLISH_DATA_KEY, rep.hash)
         span.textContent = rep.newText
-        parent.replaceChild(span, node)
+
+        if (text.isConnected) {
+          try {
+          (text as unknown as ChildNode).replaceWith(span);
+          } catch {
+            const p = text.parentNode;
+            if (p && p === text.parentNode && p.nodeType === NodeConsts.ELEMENT_NODE) {
+              try {
+                p.replaceChild(span, text);
+              } catch {
+                /* if it's already gone, ignore */
+              }
+            }
+          }
+        }
       }
     }
-  }
+  };
 
-  // process head and body
   if (doc.head) {
     for (const node of [...doc.head.childNodes]) {
       await walk(node)
