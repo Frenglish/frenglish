@@ -293,10 +293,36 @@ export async function extractStrings(
   const masterStyleMap: MasterStyleMap = {}
   const doc = await createDocument(html)
   const NodeConsts = doc.defaultView?.Node ?? { ELEMENT_NODE: 1, TEXT_NODE: 3 }
+  /**
+   * Checks if an element or any of its ancestors are marked as untranslatable.
+   * This is the master check to exclude components like the WP Admin Bar.
+   * @param element The element to check.
+   * @returns `true` if the element should be skipped, otherwise `false`.
+   */
+  const isUntranslatable = (element: Element): boolean => {
+    let current: Element | null = element;
+    while (current) {
+      // Check for specific markers
+      if (
+        current.id === 'wpadminbar' ||                  // Specifically exclude the WordPress admin bar
+        current.classList.contains('no-translation') || // Exclude based on the 'no-translation' class
+        current.hasAttribute('data-no-translation') ||  // Exclude based on a data attribute
+        current.getAttribute('translate') === 'no'      // Respect the standard HTML 'translate' attribute
+      ) {
+        return true;
+      }
+      current = current.parentElement;
+    }
+    return false;
+  };
+
 
   const walk = async (node: Node): Promise<void> => {
     if (node.nodeType === NodeConsts.ELEMENT_NODE) {
       const el = node as Element
+      if (isUntranslatable(el)) {
+        return;
+      }
       const tag = el.tagName.toLowerCase()
 
       if (SKIPPED_TAGS.has(tag)) {

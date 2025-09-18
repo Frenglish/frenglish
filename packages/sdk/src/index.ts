@@ -1,5 +1,5 @@
 // src/index.ts
-import { PartialConfiguration, Configuration, FlatJSON, Project, FileContentWithLanguage, TranslationResponse, TranslationStatus, Invitation, TextAndStyleMapResponse } from '@frenglish/utils'
+import { PartialConfiguration, Configuration, FlatJSON, Project, FileContentWithLanguage, TranslationResponse, TranslationStatus, Invitation, TextAndStyleMapResponse, LangResolveDecision } from '@frenglish/utils'
 import {
   translate as translateUtil,
   translateString as translateStringUtil,
@@ -9,7 +9,8 @@ import {
   getTextMap as getTextMapUtil,
   getSupportedFileTypes as getSupportedFileTypesUtil,
   getSupportedLanguages as getSupportedLanguagesUtil,
-  getOutdatedFiles as getOutdatedFilesUtil
+  getOutdatedFiles as getOutdatedFilesUtil,
+  getRedirectPath as getRedirectPathUtil
 } from './utils/translation.js'
 import {
   getDefaultConfiguration as getDefaultConfigurationUtil,
@@ -82,6 +83,7 @@ export interface FrenglishSDK {
    * @param isFullTranslation - Whether to perform a full translation or partial (the default is set to false so that we would reuse the existing translation)
    * @param filenames - Optional array of filenames corresponding to content
    * @param partialConfig - Optional configuration overrides
+   * @param paths - Optional path specification of urls
    * @returns Translation ID and content if successful
    * @throws {Error} If translation is cancelled or request fails
    *
@@ -92,7 +94,7 @@ export interface FrenglishSDK {
    *   ['hello.json', 'welcome.html']
    * );
    */
-  translate(content: string[], isFullTranslation?: boolean, filenames?: string[], partialConfig?: PartialConfiguration): Promise<{ translationId: number, content: TranslationResponse[] }>;
+  translate(content: string[], isFullTranslation?: boolean, filenames?: string[], partialConfig?: PartialConfiguration, paths?: string[]): Promise<{ translationId: number, content: TranslationResponse[] }>;
 
   /**
    * Translates a single string to a specified target language.
@@ -206,6 +208,25 @@ export interface FrenglishSDK {
   getOutdatedFiles(): Promise<TranslationResponse[]>;
 
   /**
+   * Given a target language and path (e.g. "/de/about-us"), ask the backend
+   * if the page is allowed or if we should redirect elsewhere.
+   *
+   * @param targetLang - e.g. "de"
+   * @param targetPath - e.g. "/de/about-us" (NOT a full URL)
+   * @param options.performRedirect - If true, will call window.location.assign(...)
+   * @param options.baseUrl - Optional absolute base (e.g. "https://example.com") to prefix finalUrl
+   * @returns Backend decision plus a computed finalUrl (or null if no nav needed)
+   *
+   * @example
+   * const { finalUrl } = await sdk.getRedirectPath('fr', '/fr/about-us', { performRedirect: true })
+   */
+  getRedirectPath(
+    targetLang: string,
+    targetPath: string,
+    options?: { performRedirect?: boolean; baseUrl?: string }
+  ): Promise<LangResolveDecision & { finalUrl: string | null }>;
+
+  /**
    * Updates the configuration for a project.
    *
    * @param partiallyUpdatedConfig - The configuration updates to apply
@@ -304,8 +325,8 @@ export interface FrenglishSDK {
  */
 export function FrenglishSDK(apiKey: string): FrenglishSDK {
   return {
-    translate: async (content, isFullTranslation = false, filenames = [], partialConfig = {}) => {
-      return translateUtil(content, apiKey, isFullTranslation, filenames, partialConfig)
+    translate: async (content, isFullTranslation = false, filenames = [], partialConfig = {}, paths = []) => {
+      return translateUtil(content, apiKey, isFullTranslation, filenames, partialConfig, paths)
     },
 
     translateString: async (content, lang, isFullTranslation, partialConfig = {}) => {
@@ -334,6 +355,15 @@ export function FrenglishSDK(apiKey: string): FrenglishSDK {
 
     getOutdatedFiles: async () => {
       return getOutdatedFilesUtil(apiKey)
+    },
+
+    getRedirectPath: async (targetLang, targetPath, options = {}) => {
+      return getRedirectPathUtil({
+        apiKey,
+        targetLang,
+        targetPath,
+        ...options, // { performRedirect?, baseUrl? }
+      })
     },
 
     getProjectSupportedLanguages: async () => {

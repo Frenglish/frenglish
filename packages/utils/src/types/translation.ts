@@ -47,3 +47,13 @@ export interface FlatJSON {
     translationComment?: string // Optional translation comment for the value
     value: any // Value associated with path in json
 }
+
+export interface LangResolveDecision {
+  ok: boolean
+  allowed: boolean
+  behavior?: string | null
+  redirectTo: string | null
+  canonicalPath: string
+  activeLocales?: string[]
+  lang?: string
+}

@@ -8,8 +8,57 @@ import {
   CompletedTranslationResponse,
   FlatJSON,
   TextAndStyleMapResponse,
+  LangResolveDecision
 } from '@frenglish/utils'
 import { apiRequest } from './api.js'
+
+/**
+ * Call /api/translation/lang/resolve with the path you already computed.
+ * Assumes `targetPath` is a path like "/de/about-us" (NOT a full URL).
+ */
+export async function getRedirectPath(opts: {
+  apiKey: string
+  targetLang: string         // e.g. "de"
+  targetPath: string         // e.g. "/de/about-us"
+  baseUrl?: string           // optional site base when redirecting (e.g. "https://example.com")
+}): Promise<LangResolveDecision & { finalUrl: string | null }> {
+  const { apiKey, targetLang, targetPath, baseUrl } = opts
+  const createLangPath = (lang: string, path: string): string => {
+    const cleanLang = lang.replace(/\//g, '');
+    const cleanPath = path.startsWith('/') ? path : `/${path}`;
+    
+    if (cleanPath === '/') {
+      return `/${cleanLang}`;
+    }
+    return `/${cleanLang}${cleanPath}`;
+  };
+
+  const effectiveBaseUrl =
+    baseUrl || (typeof window !== 'undefined' ? window.location.origin : '');
+
+  const decision = await apiRequest<LangResolveDecision>('/api/translation/lang/resolve', {
+    body: {
+      apiKey,
+      path: targetPath,
+      lang: targetLang,
+    },
+    errorContext: 'Failed to resolve language redirect',
+  })
+
+  const prefixBase = (p: string) => (effectiveBaseUrl ? effectiveBaseUrl.replace(/\/$/, '') : '') + p;
+  let finalUrl: string | null = null;
+
+  if (decision.allowed) {
+    const finalPath = createLangPath(targetLang, decision.canonicalPath);
+    finalUrl = prefixBase(finalPath);
+
+  } else if (decision.redirectTo) {
+    const finalPath = createLangPath(targetLang, decision.redirectTo);
+    finalUrl = prefixBase(finalPath);
+  }
+
+  return { ...decision, finalUrl };
+}
 
 /**
  * Internal helper function to poll for translation completion.
@@ -91,6 +140,7 @@ export const pollForTranslation = async (
  * @param {boolean} [isFullTranslation=false] - Whether to perform a full translation.
  * @param {string[]} [filenames=[]] - Filenames associated with the content.
  * @param {PartialConfiguration} [partialConfig={}] - Partial configuration to override default settings.
+ * @param {string[]} [paths=[]] - Optional: Paths to specify the urls they're coming from
  * @returns {Promise<CompletedTranslationResponse>} A promise that resolves to RequestTranslationResponse with translationId and content
  * @throws {Error} If the request fails, translation is cancelled, or polling times out
  */
@@ -100,6 +150,7 @@ export async function translate(
   isFullTranslation = false,
   filenames: string[] = [],
   partialConfig: PartialConfiguration = {},
+  paths: string[] = []
 ): Promise<CompletedTranslationResponse> {
   const parsedConfig = await parsePartialConfig(partialConfig)
 
@@ -110,6 +161,7 @@ export async function translate(
       filenames,
       partialConfig: parsedConfig,
       apiKey,
+      paths,
     },
     errorContext: 'Failed to request translation',
   })
