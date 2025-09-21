@@ -2,7 +2,7 @@
 // Constants
 // ---------------------------------------------------------------------------
 import pkg from 'crypto-js'
-import type { JSDOM as JSDOMType, VirtualConsole as VirtualConsoleType } from 'jsdom'
+import type { JSDOM as JSDOMType,  VirtualConsole as VirtualConsoleType } from 'jsdom'
 import { extractTextComponents } from './utils.js'
 import { CompressionResult, ExtractionResult, MasterStyleMap, OriginalTagInfo } from '../types/html.js'
 import { Configuration } from '../types/configuration.js'
@@ -31,8 +31,7 @@ export const TRANSLATABLE_ATTRIBUTES = new Set([
 const COLLAPSIBLE_TAGS = [
   'p', 'li', 'dt', 'dd', 'caption',
   'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-  'legend', 'summary', 'th', 'td', 'div', 'button',
-  'a', 'label', 'span'
+  'legend', 'summary', 'th', 'td', 'div',
 ]
 const COLLAPSIBLE_SET = new Set(COLLAPSIBLE_TAGS)
 
@@ -43,36 +42,67 @@ const ATOMIC_CHILD_SET = new Set([
   'img', 'a', 'picture', 'source',
 ])
 
+
 const DO_NOT_COLLAPSE_CLASSES = new Set([
+
   // --- Navigation & Interactive ---
+
   'awb-menu__li',
+
   'awb-submenu__li',
+
   'menu-item',
+
   'breadcrumb',
+
   'pagination',
+
   'page-numbers',
+
   'tab',
 
+
+
   // --- Layout & Grid (Page Builders) ---
+
   'card',
+
   'col',
+
   'column',
+
   'fusion-builder-column',
+
   'fusion-layout-column',
+
   'elementor-widget-container',
+
   'pricing-table',
 
+
+
   // --- Widgets & Modules ---
+
   'slide',
+
   'carousel-item',
+
   'swiper-slide',
+
   'accordion-item',
+
   'testimonial',
+
   'modal',
 
+
+
   // --- Forms ---
+
   'form-group',
+
   'form-row',
+
 ]);
 
 // – Tags (and matching <script> / <style>) that we *never* walk for text
@@ -103,7 +133,7 @@ async function upsertPlaceholder(raw: string | undefined | null, maps: TextMaps,
   } else {
     compressedMiddleTextString = unescapeHtml(middleText)
   }
-
+  
   const PH_TAG_RE = /<(\/?)(sty|href|excl)(\d+)([^>]*)>/gi;
   compressedMiddleTextString = compressedMiddleTextString.replace(
     PH_TAG_RE,
@@ -169,13 +199,21 @@ const isAtomicContainer = (el: Element) => {
 
 export const shouldCollapse = (el: Element) => {
   for (const className of DO_NOT_COLLAPSE_CLASSES) {
+
     if (el.classList.contains(className)) {
+
       return false;
+
     }
+
   }
 
+
+
   if (Array.from(el.classList).some(cls => cls.startsWith('col-') || cls.startsWith('wp-block-'))) {
+
     return false;
+
   }
 
   const tag = el.tagName.toLowerCase();
@@ -201,13 +239,7 @@ async function processAttributes(el: Element, maps: TextMaps, inject: boolean, c
     const val = el.getAttribute(attr)
     if (!val?.trim()) continue
     const rep = await upsertPlaceholder(val, maps, inject, config, compress, masterStyleMap)
-    if (rep) {
-      el.setAttribute(attr, rep.newText)
-      if (injectDataKey) {
-        const attributeSpecificKey = `${FRENGLISH_DATA_KEY}-${attr}`
-        el.setAttribute(attributeSpecificKey, rep.hash)
-      }
-    }
+    if (rep) el.setAttribute(attr, rep.newText)
   }
 
   // value="…" on buttons / inputs
@@ -239,13 +271,7 @@ async function processAttributes(el: Element, maps: TextMaps, inject: boolean, c
       ].includes(name)
     ) {
       const rep = await upsertPlaceholder(content, maps, inject, config, compress, masterStyleMap)
-      if (rep) {
-        el.setAttribute('content', rep.newText);
-        if (injectDataKey) {
-          const metaContentKey = `${FRENGLISH_DATA_KEY}-content`;
-          el.setAttribute(metaContentKey, rep.hash);
-        }
-      }
+      if (rep) el.setAttribute('content', rep.newText)
     }
     return
   }
@@ -290,39 +316,13 @@ export async function extractStrings(
   currentLanguage: string
 ): Promise<ExtractionResult & { styleMap: MasterStyleMap }> {
   const maps: TextMaps = { forward: {}, reverse: {} }
-  const masterStyleMap: MasterStyleMap = {}
+  const masterStyleMap:  MasterStyleMap  = {}
   const doc = await createDocument(html)
   const NodeConsts = doc.defaultView?.Node ?? { ELEMENT_NODE: 1, TEXT_NODE: 3 }
-  /**
-   * Checks if an element or any of its ancestors are marked as untranslatable.
-   * This is the master check to exclude components like the WP Admin Bar.
-   * @param element The element to check.
-   * @returns `true` if the element should be skipped, otherwise `false`.
-   */
-  const isUntranslatable = (element: Element): boolean => {
-    let current: Element | null = element;
-    while (current) {
-      // Check for specific markers
-      if (
-        current.id === 'wpadminbar' ||                  // Specifically exclude the WordPress admin bar
-        current.classList.contains('no-translation') || // Exclude based on the 'no-translation' class
-        current.hasAttribute('data-no-translation') ||  // Exclude based on a data attribute
-        current.getAttribute('translate') === 'no'      // Respect the standard HTML 'translate' attribute
-      ) {
-        return true;
-      }
-      current = current.parentElement;
-    }
-    return false;
-  };
-
 
   const walk = async (node: Node): Promise<void> => {
     if (node.nodeType === NodeConsts.ELEMENT_NODE) {
       const el = node as Element
-      if (isUntranslatable(el)) {
-        return;
-      }
       const tag = el.tagName.toLowerCase()
 
       if (SKIPPED_TAGS.has(tag)) {
@@ -338,18 +338,6 @@ export async function extractStrings(
           }
         }
         return
-      }
-
-      const isIconElement = (tag === 'a' || tag === 'i' || tag === 'span') && !el.textContent?.trim();
-      const hasIconClass = Array.from(el.classList).some(cls => cls.includes('icon') || cls.includes('ionicon'));
-
-      if (isIconElement && hasIconClass) {
-        await processAttributes(el, maps, injectPlaceholders, config, compress, injectDataKey, masterStyleMap, currentLanguage);
-        return;
-      }
-
-      if (el.hasAttribute(FRENGLISH_DATA_KEY)) {
-        return;
       }
 
       if (el.classList.contains('ionicon')) {
@@ -371,21 +359,17 @@ export async function extractStrings(
         return
       }
 
-      const childrenSnapshot = [...el.childNodes]
-      for (const child of childrenSnapshot) {
-        if ('isConnected' in child && !child.isConnected) continue
-        await walk(child);
-      }
-
       await processAttributes(el, maps, injectPlaceholders, config, compress, injectDataKey, masterStyleMap, currentLanguage)
 
+      // recursive
+      for (const child of el.childNodes) {
+        await walk(child)
+      }
       return
     }
 
     if (node.nodeType === NodeConsts.TEXT_NODE) {
       const parent = node.parentElement
-      const text = node as Text
-
       if (!parent || !node.textContent?.trim()) return
       const pTag = parent.tagName.toLowerCase()
 
@@ -413,32 +397,19 @@ export async function extractStrings(
         const span = doc.createElement('span')
         if (injectDataKey) span.setAttribute(FRENGLISH_DATA_KEY, rep.hash)
         span.textContent = rep.newText
-
-        if (text.isConnected) {
-          try {
-          (text as unknown as ChildNode).replaceWith(span);
-          } catch {
-            const p = text.parentNode;
-            if (p && p === text.parentNode && p.nodeType === NodeConsts.ELEMENT_NODE) {
-              try {
-                p.replaceChild(span, text);
-              } catch {
-                /* if it's already gone, ignore */
-              }
-            }
-          }
-        }
+        parent.replaceChild(span, node)
       }
     }
-  };
+  }
 
+  // process head and body
   if (doc.head) {
-    for (const node of [...doc.head.childNodes]) {
+    for (const node of doc.head.childNodes) {
       await walk(node)
     }
   }
   if (doc.body) {
-    for (const node of [...doc.body.childNodes]) {
+    for (const node of doc.body.childNodes) {
       await walk(node)
     }
   }
@@ -452,14 +423,14 @@ export async function extractStrings(
 
 async function getCompressedInLineWithStyleMap(
   htmlChunk: string,
-  config: Configuration,
-  map: MasterStyleMap
+  config:   Configuration,
+  map:      MasterStyleMap
 ): Promise<string> {
   const { compressed, styleMap, hrefMap } =
-    await compressInlineStyling(htmlChunk, config)
+          await compressInlineStyling(htmlChunk, config)
 
   const hash = SHA256(compressed).toString()
-  map[hash] = { styleMap, hrefMap }
+  map[hash]  = { styleMap, hrefMap }
   return compressed
 }
 
@@ -510,8 +481,6 @@ export function decompressHTML(
   styleMap: Record<string, OriginalTagInfo>,
   hrefMap: Record<string, string> = {},
 ): string {
-  styleMap = styleMap || {}
-
   let out = compressedString
 
   // Compression wrappers: hrefs, styling and exclusions
@@ -529,8 +498,7 @@ export function decompressHTML(
     )
 
     /* 2️⃣ merge: translator wins over original */
-    const final: Record<string, string> = { ...(info.attributes || {}), ...parsed };
-
+    const final: Record<string, string> = { ...info.attributes, ...parsed }
 
     /* 3️⃣ serialize */
     let attrString = ''
@@ -557,8 +525,8 @@ export function decompressHTML(
       const info = styleMap[phTag]
       if (!info) return m
       let attrs = ''
-      for (const [k, v] of Object.entries(info.attributes || {})) {
-        attrs += ` ${k}="${escapeAttribute(v)}"`;
+      for (const [k, v] of Object.entries(info.attributes)) {
+        attrs += ` ${k}="${escapeAttribute(v)}"`
       }
 
       // Handle self-closing elements
@@ -670,7 +638,7 @@ function compressHTML(
         const el = n as Element
         const tagName = el.tagName.toLowerCase()
 
-        if (tagName === 'br' || tagName === 'hr' || tagName === 'wbr' || tagName === 'area' || tagName === 'base' || tagName === 'col'
+        if (tagName === 'br' || tagName === 'hr' || tagName === 'wbr' || tagName === 'area' || tagName === 'base' || tagName ==='col'
           || tagName === 'embed' || tagName === 'param' || tagName === 'source' || tagName === 'track') {
           const ph = `sty${counter++}`
           styleMap[ph] = {
@@ -842,7 +810,7 @@ function isCompressibleInlineElement(el: Element): boolean {
   const tag = el.tagName.toLowerCase()
   return new Set([
     'span', 'strong', 'em', 'i', 'b', 'u', 'sub', 'sup', 'mark', 'small', 'font', 'code',
-    'abbr', 'cite', 'bdi', 'bdo', 'del', 'ins', 'kbd', 'q', 'samp', 'var'
+    'abbr','cite','bdi','bdo','del','ins','kbd','q','samp','var'
   ]).has(tag)
 }
 
@@ -878,18 +846,409 @@ function escapeAttribute(v: string): string {
  * The order of replacement is important: &amp; must be first.
  */
 function unescapeHtml(v: string): string {
-  if (!v) return '';
-  return v
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&apos;/g, "'")
-    .replace(/&nbsp;/g, ' ');
+    if (!v) return '';
+    return v
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+        .replace(/&apos;/g, "'")
+        .replace(/&nbsp;/g, ' ');
 }
 
-function shouldEscape(str: string): boolean {
-  // Matches <STY0>, <HREF1>, <EXCL2>, etc.
-  return !/<(?:sty|href|excl)\d+>/i.test(str);
+// ----------------------------------------------------------------------------
+// Language-based visibility pruning
+// ----------------------------------------------------------------------------
+
+/**
+ * Normalizes a path:
+ * - keeps only pathname
+ * - ensures a single leading slash
+ * - removes trailing slash (except root '/')
+ * - lowercases for matching
+ */
+function normalizePath(p: string): string {
+  try {
+    if (/^https?:\/\//i.test(p)) {
+      const u = new URL(p)
+      p = u.pathname || '/'
+    }
+  } catch {
+    /* ignore */
+  }
+  p = String(p || '').split('?')[0].split('#')[0].trim()
+  if (!p.startsWith('/')) p = '/' + p
+  p = p.replace(/\/{2,}/g, '/')
+  if (p.length > 1 && p.endsWith('/')) p = p.slice(0, -1)
+  return p.toLowerCase()
+}
+
+/**
+ * If path starts with a locale segment present in config (originLanguage or languages),
+ * strip it for a looser match. E.g., /fr/products/a -> /products/a
+ */
+function stripLocalePrefix(p: string, config: Configuration): string {
+  const segs = p.split('/').filter(Boolean)
+  if (!segs.length) return p
+  const first = segs[0].toLowerCase()
+  const localeSet = new Set(([...(config.languages || []), config.originLanguage].filter(Boolean) as string[]).map(l => l.toLowerCase()))
+  if (localeSet.has(first)) {
+    const rest = '/' + segs.slice(1).join('/')
+    return normalizePath(rest || '/')
+  }
+  return p
+}
+
+/**
+ * Find the best ancestor to remove (menu item, list item, nav container, etc.)
+ * Falls back to the anchor element itself if nothing matches within 6 levels.
+ */
+function findRemovalContainer(a: Element, extraSelectors: string[] = []): Element {
+  const DEFAULT_SELECTORS = [
+    'li.menu-item',
+    '.menu-item',
+    '.awb-menu__li',
+    '.awb-menu__sub-li',
+    '.nav-item',
+    '[role="menuitem"]',
+    'li',
+  ]
+  const selectors = [...DEFAULT_SELECTORS, ...extraSelectors]
+  let cur: Element | null = a
+  let depth = 0
+  while (cur && depth < 6) {
+    if (selectors.some(sel => cur!.matches?.(sel))) return cur!
+    cur = cur.parentElement
+    depth++
+  }
+  return a
+}
+
+/**
+ * Build a quick index of normalized paths -> enabledLocales
+ * (also keeps a version with locale prefix stripped for looser matches)
+ */
+function buildPathIndex(config: Configuration) {
+  const exact = new Map<string, string[]>()
+  const noloc = new Map<string, string[]>()
+  const entries = config.languageAvailability?.entries || []
+
+  for (const e of entries) {
+    if (!e?.path) continue
+    const p = normalizePath(e.path)
+    const enabled = e.enabledLocales || []
+    exact.set(p, enabled)
+    noloc.set(stripLocalePrefix(p, config), enabled)
+  }
+  return { exact, noloc }
+}
+
+/**
+ * Find the enabledLocales for a given href, trying:
+ * 1) exact normalized path
+ * 2) same path with locale prefix stripped
+ * 3) substring fallback (entry.path contained in href path)
+ */
+function lookupEnabledLocalesForHref(
+  hrefPath: string,
+  config: Configuration,
+  exact: Map<string, string[]>,
+  noloc: Map<string, string[]>
+): string[] | null {
+  if (exact.has(hrefPath)) return exact.get(hrefPath)!
+  const stripped = stripLocalePrefix(hrefPath, config)
+  if (noloc.has(stripped)) return noloc.get(stripped)!
+
+  // substring fallback
+  let best: string[] | null = null
+  let bestLen = 0
+  for (const [p, locs] of exact.entries()) {
+    if (hrefPath.includes(p) && p.length > bestLen) { best = locs; bestLen = p.length }
+  }
+  if (best) return best
+
+  best = null
+  bestLen = 0
+  for (const [p, locs] of noloc.entries()) {
+    if (hrefPath.includes(p) && p.length > bestLen) { best = locs; bestLen = p.length }
+  }
+  return best
+}
+
+function detectLanguageFromHtml(doc: Document, fallback?: string): string {
+  let lang = (doc.documentElement.getAttribute('lang') || '').trim()
+  if (!lang) lang = (doc.documentElement.getAttribute('xml:lang') || '').trim()
+  if (!lang && doc.body) lang = (doc.body.getAttribute('lang') || '').trim()
+  if (!lang) {
+    const metaHttp = doc.querySelector('meta[http-equiv="content-language"]') as HTMLMetaElement | null
+    const metaName = doc.querySelector('meta[name="language"]') as HTMLMetaElement | null
+    lang = (metaHttp?.content || metaName?.content || '').trim()
+  }
+  if (!lang && fallback) lang = fallback
+  return (lang || '').toLowerCase()
+}
+
+// --- locale helpers (add above or near the function) ---
+const normalizeLocale = (s: string) =>
+  (s || "").toLowerCase().replace("_", "-").trim();
+
+const normalizeLocaleList = (ls: readonly string[] | undefined) =>
+  Array.from(new Set((ls || []).map(normalizeLocale)));
+
+const shouldAllowBaseLangPrefixWithReason = (
+  currentLang: string,
+  allLocales: readonly string[] | undefined,
+  enabledLocalesForPath: readonly string[]
+) => {
+  const lang = normalizeLocale(currentLang);
+  const base = lang.split("-")[0];
+
+  const all = normalizeLocaleList(allLocales);
+  const enabled = normalizeLocaleList(enabledLocalesForPath);
+
+  const allHasBase = all.includes(base);
+  const allHasVariant = all.some((l) => l.startsWith(base + "-"));
+  const enabledHasBase = enabled.includes(base);
+  const enabledHasVariant = enabled.some((l) => l.startsWith(base + "-"));
+
+  // Global strictness: if site knows both base and a variant for this language, be strict.
+  if ((allHasBase && allHasVariant) || (enabledHasBase && enabledHasVariant)) {
+    return { allowBase: false, reason: "strict:base+variant-present" };
+  }
+
+  // NEW: Variant is known globally, but not enabled for this path -> be strict.
+  // Example: lang=en-us, allLocales contains en-us, enabled=['sv','en'] -> no fallback
+  if (lang.includes("-") && all.includes(lang) && !enabled.includes(lang)) {
+    return { allowBase: false, reason: "strict:variant-known-but-not-enabled" };
+  }
+
+  return { allowBase: true, reason: "fallback-ok" };
+};
+
+const localeMatchesConditional = (
+  currentLang: string,
+  enabledLocales: readonly string[],
+  allowBaseFallback: boolean
+) => {
+  const lang = normalizeLocale(currentLang);
+  const enabled = normalizeLocaleList(enabledLocales);
+
+  if (enabled.includes(lang)) return true;
+  if (!allowBaseFallback) return false;
+
+  // base fallback: en-us -> en (only if permitted)
+  const base = lang.split("-")[0];
+  return enabled.includes(base);
+};
+
+// ---------------------------------------------------------------------------
+// Prune availableUI 
+// ---------------------------------------------------------------------------
+export async function pruneUnavailableUI(
+  html: string,
+  configuration: Configuration,
+  opts: { strategy?: "remove" | "hide"; ancestorSelectors?: string[]; baseUrl?: string } = {}
+): Promise<string> {
+  const entries = configuration?.languageAvailability?.entries || [];
+  if (!html || !entries.length) return html;
+
+  const PRUNED_ATTR = "data-frenglish-pruned";
+  const PRUNED_PATH_ATTR = "data-frenglish-pruned-path";
+
+  const doc = await createDocument(html);
+  const baseUrl = opts.baseUrl || doc.baseURI || "https://example.local";
+  const { exact, noloc } = buildPathIndex(configuration);
+
+  // derive language from the HTML, fall back to config
+  const lang = detectLanguageFromHtml(
+    doc,
+    configuration.originLanguage || (configuration.languages?.[0] ?? "")
+  );
+  const allLocales = (configuration as any)?.locales ?? configuration?.languages ?? [];
+
+  const removeOurDisplayNone = (el: Element) => {
+    const style = el.getAttribute("style") || "";
+    const newStyle = style
+      .replace(/(?:^|;)\s*display\s*:\s*none\s*!important\s*;?/i, ";")
+      .replace(/;;+/g, ";")
+      .replace(/^\s*;\s*|\s*;\s*$/g, "");
+    if (newStyle) el.setAttribute("style", newStyle);
+    else el.removeAttribute("style");
+  };
+
+  const addOurDisplayNone = (el: Element) => {
+    const style = el.getAttribute("style") || "";
+    if (/display\s*:\s*none\s*!important/i.test(style)) return;
+    el.setAttribute(
+      "style",
+      (style ? style.replace(/\s*;?\s*$/, "; ") : "") + "display:none !important;"
+    );
+  };
+
+  const isHiddenByUs = (el: Element) => {
+    if (el.getAttribute(PRUNED_ATTR) === "language-mismatch") return true;
+    const style = el.getAttribute("style") || "";
+    return /display\s*:\s*none\s*!important/i.test(style);
+  };
+
+  const countVisibleSubmenuItems = (menuItemLi: Element): number => {
+    // count descendent <li> items that are not hidden/pruned
+    const lis = Array.from(menuItemLi.querySelectorAll("li"));
+    let count = 0;
+    for (const li of lis) {
+      if (!li.querySelector("a[href]")) continue; // only rows with a link
+      if (!isHiddenByUs(li)) count++;
+    }
+    return count;
+  };
+
+  const collapseIfDropdownEmpty = (menuItemLi: Element) => {
+    if (!menuItemLi.classList.contains("menu-item-has-children")) return;
+    const remaining = countVisibleSubmenuItems(menuItemLi);
+    if (remaining > 0) return;
+    if (opts.strategy === "remove") {
+      menuItemLi.remove();
+    } else {
+      addOurDisplayNone(menuItemLi);
+      menuItemLi.setAttribute(PRUNED_ATTR, "language-mismatch");
+      if (!menuItemLi.getAttribute(PRUNED_PATH_ATTR)) {
+        menuItemLi.setAttribute(PRUNED_PATH_ATTR, "(empty-dropdown)");
+      }
+      const topA = menuItemLi.querySelector(":scope > a");
+      if (topA && !topA.hasAttribute("tabindex"))
+        (topA as HTMLElement).setAttribute("tabindex", "-1");
+    }
+  };
+
+  // Phase 1: reveal previously hidden (if rules changed)
+  {
+    const previouslyHidden = Array.from(
+      doc.querySelectorAll(`[${PRUNED_ATTR}="language-mismatch"]`)
+    ) as Element[];
+    for (const el of previouslyHidden) {
+      const raw = el.getAttribute(PRUNED_PATH_ATTR) || "";
+      const path = normalizePath(raw);
+      const enabled = lookupEnabledLocalesForHref(path, configuration, exact, noloc);
+      if (!enabled) {
+        removeOurDisplayNone(el);
+        el.removeAttribute(PRUNED_ATTR);
+        el.removeAttribute(PRUNED_PATH_ATTR);
+        el.querySelectorAll('a[tabindex="-1"]').forEach((a) =>
+          (a as HTMLElement).removeAttribute("tabindex")
+        );
+        continue;
+      }
+      const { allowBase } = shouldAllowBaseLangPrefixWithReason(lang, allLocales, enabled);
+      const allowed = localeMatchesConditional(lang, enabled, allowBase);
+      if (allowed) {
+        removeOurDisplayNone(el);
+        el.removeAttribute(PRUNED_ATTR);
+        el.removeAttribute(PRUNED_PATH_ATTR);
+        el.querySelectorAll('a[tabindex="-1"]').forEach((a) =>
+          (a as HTMLElement).removeAttribute("tabindex")
+        );
+        el.querySelectorAll(`[${PRUNED_ATTR}="language-mismatch"]`).forEach((child) => {
+          removeOurDisplayNone(child as Element);
+          child.removeAttribute(PRUNED_ATTR);
+          child.removeAttribute(PRUNED_PATH_ATTR);
+        });
+      }
+    }
+  }
+
+  // Phase 2: scan anchors and prune disallowed ones
+  const anchors = Array.from(doc.querySelectorAll("a[href]")) as HTMLAnchorElement[];
+
+  for (const a of anchors) {
+    const rawHref = a.getAttribute("href") || "";
+    if (!rawHref || /^(mailto:|tel:|javascript:)/i.test(rawHref)) continue;
+
+    let pathname = "";
+    try {
+      const u = new URL(rawHref, baseUrl);
+      pathname = normalizePath(u.pathname);
+    } catch {
+      pathname = normalizePath(rawHref);
+    }
+
+    const enabled = lookupEnabledLocalesForHref(pathname, configuration, exact, noloc);
+    if (!enabled) continue;
+
+    const { allowBase } = shouldAllowBaseLangPrefixWithReason(lang, allLocales, enabled);
+    const allowed = localeMatchesConditional(lang, enabled, allowBase);
+    if (allowed) continue;
+
+    const container = findRemovalContainer(a, opts.ancestorSelectors || []);
+    const linksInside = container.querySelectorAll("a[href]");
+
+    // If this <a> is the top trigger of a dropdown, KEEP the dropdown visible.
+    // Neutralize the top link, then hide/remove only submenu items that point to the disallowed path.
+    const isTopTrigger =
+      container.classList.contains("menu-item-has-children") &&
+      a.parentElement === container &&
+      linksInside.length > 1;
+
+    if (isTopTrigger) {
+      // Neutralize top anchor (keep visible so mega-menu mechanics remain)
+      const topA = a; // same reference as passed
+      topA.setAttribute(PRUNED_ATTR, "language-mismatch");
+      topA.setAttribute(PRUNED_PATH_ATTR, pathname);
+      topA.setAttribute("aria-disabled", "true");
+      topA.setAttribute("tabindex", "0");
+      topA.removeAttribute("href");
+      (topA as HTMLElement).style.cursor = "default";
+      topA.setAttribute("role", "button");
+
+      // Hide/remove only submenu items that match the disallowed path
+      const submenuLinks = Array.from(container.querySelectorAll("a[href]")) as HTMLAnchorElement[];
+      for (const subA of submenuLinks) {
+        if (subA === topA) continue; // skip the neutralized top link
+        let subPath = "";
+        try {
+          const u2 = new URL(subA.getAttribute("href") || "", baseUrl);
+          subPath = normalizePath(u2.pathname);
+        } catch {
+          subPath = normalizePath(subA.getAttribute("href") || "");
+        }
+        if (subPath === pathname) {
+          const subLi = findRemovalContainer(subA, opts.ancestorSelectors || []);
+          if (opts.strategy === "remove") {
+            subLi.remove();
+          } else {
+            addOurDisplayNone(subLi);
+            subLi.setAttribute(PRUNED_ATTR, "language-mismatch");
+            subLi.setAttribute(PRUNED_PATH_ATTR, subPath);
+            if (!subA.hasAttribute("tabindex")) subA.setAttribute("tabindex", "-1");
+          }
+        }
+      }
+
+      // After pruning matching submenu items, collapse ONLY if dropdown is now empty
+      collapseIfDropdownEmpty(container);
+      continue;
+    }
+
+    // Non-top items: hide/remove the specific item (not the whole dropdown)
+    const target = linksInside.length > 1 ? a : container;
+    if (opts.strategy === "remove") {
+      const parentDropdown = container.closest(".menu-item-has-children");
+      target.remove();
+      if (parentDropdown) collapseIfDropdownEmpty(parentDropdown);
+    } else {
+      addOurDisplayNone(target);
+      target.setAttribute(PRUNED_ATTR, "language-mismatch");
+      target.setAttribute(PRUNED_PATH_ATTR, pathname);
+      const link =
+        target.tagName.toLowerCase() === "a"
+          ? (target as HTMLElement)
+          : ((target.querySelector("a") as HTMLElement | null) ?? null);
+      if (link && !link.hasAttribute("tabindex")) link.setAttribute("tabindex", "-1");
+
+      const parentDropdown = container.closest(".menu-item-has-children");
+      if (parentDropdown) collapseIfDropdownEmpty(parentDropdown);
+    }
+  }
+
+  return doc.documentElement.outerHTML;
 }
