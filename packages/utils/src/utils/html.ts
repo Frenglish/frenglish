@@ -42,69 +42,6 @@ const ATOMIC_CHILD_SET = new Set([
   'img', 'a', 'picture', 'source',
 ])
 
-
-const DO_NOT_COLLAPSE_CLASSES = new Set([
-
-  // --- Navigation & Interactive ---
-
-  'awb-menu__li',
-
-  'awb-submenu__li',
-
-  'menu-item',
-
-  'breadcrumb',
-
-  'pagination',
-
-  'page-numbers',
-
-  'tab',
-
-
-
-  // --- Layout & Grid (Page Builders) ---
-
-  'card',
-
-  'col',
-
-  'column',
-
-  'fusion-builder-column',
-
-  'fusion-layout-column',
-
-  'elementor-widget-container',
-
-  'pricing-table',
-
-
-
-  // --- Widgets & Modules ---
-
-  'slide',
-
-  'carousel-item',
-
-  'swiper-slide',
-
-  'accordion-item',
-
-  'testimonial',
-
-  'modal',
-
-
-
-  // --- Forms ---
-
-  'form-group',
-
-  'form-row',
-
-]);
-
 // – Tags (and matching <script> / <style>) that we *never* walk for text
 export const SKIPPED_TAGS = new Set(['script', 'style', 'noscript', 'code', 'pre', 'template', 'svg'])
 
@@ -198,24 +135,6 @@ const isAtomicContainer = (el: Element) => {
 }
 
 export const shouldCollapse = (el: Element) => {
-  for (const className of DO_NOT_COLLAPSE_CLASSES) {
-
-    if (el.classList.contains(className)) {
-
-      return false;
-
-    }
-
-  }
-
-
-
-  if (Array.from(el.classList).some(cls => cls.startsWith('col-') || cls.startsWith('wp-block-'))) {
-
-    return false;
-
-  }
-
   const tag = el.tagName.toLowerCase();
   if (tag === 'html' || tag === 'head' || tag === 'body' || SKIPPED_TAGS.has(tag)) return false;
   if (el.hasAttribute(FRENGLISH_DATA_KEY)) return false;
