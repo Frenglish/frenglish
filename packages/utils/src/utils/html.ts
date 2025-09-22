@@ -147,13 +147,24 @@ export const shouldCollapse = (el: Element) => {
 // ---------------------------------------------------------------------------
 // Recursive processors
 // ---------------------------------------------------------------------------
-async function processAttributes(el: Element, maps: TextMaps, inject: boolean, config: Configuration, compress: boolean, injectDataKey: boolean, masterStyleMap: MasterStyleMap, currentLanguage?: string) {
+async function processAttributes(
+  el: Element,
+  maps: TextMaps,
+  inject: boolean,
+  config: Configuration,
+  compress: boolean,
+  injectDataKey: boolean,
+  masterStyleMap: MasterStyleMap,
+  currentLanguage?: string
+) {
   const tag = el.tagName.toLowerCase()
 
+  // <title> is handled via the text-node path; skip here.
   if (tag === 'title') {
-    return // ✅ skip entirely because <title> is handled separately
+    return
   }
 
+  // Generic attribute handling
   for (const attr of TRANSLATABLE_ATTRIBUTES) {
     const val = el.getAttribute(attr)
     if (!val?.trim()) continue
@@ -172,11 +183,12 @@ async function processAttributes(el: Element, maps: TextMaps, inject: boolean, c
     if (rep) el.setAttribute('value', rep.newText)
   }
 
-  // <meta>
+  // <meta name|property=... content="...">
   if (tag === 'meta') {
     const content = el.getAttribute('content')
     if (!content) return
     const name = (el.getAttribute('name') || el.getAttribute('property') || '').toLowerCase()
+
     if (
       [
         'description',
@@ -190,16 +202,25 @@ async function processAttributes(el: Element, maps: TextMaps, inject: boolean, c
       ].includes(name)
     ) {
       const rep = await upsertPlaceholder(content, maps, inject, config, compress, masterStyleMap)
-      if (rep) el.setAttribute('content', rep.newText)
+      if (rep) {
+        el.setAttribute('content', rep.newText)
+
+        // 🔑 Minimal fix: mark the element with the key and which attribute to fill on reinjection
+        if (injectDataKey) {
+          el.setAttribute(FRENGLISH_DATA_KEY, rep.hash)          // e.g., data-frenglish-key="abc123..."
+          el.setAttribute('data-frenglish-attr', 'content')      // tells reinjector which attr to replace
+        }
+      }
     }
     return
   }
 
+  // Tag the element with current language for debugging/queries (existing behavior)
   if (currentLanguage) {
     el.setAttribute('translated-lang', currentLanguage)
   }
 
-  // <title>
+  // (Unreachable before due to early return, left here for parity – kept as-is)
   if (tag === 'title' && !el.hasAttribute(FRENGLISH_DATA_KEY)) {
     const rep = await upsertPlaceholder(el.textContent, maps, inject, config, compress, masterStyleMap)
     if (rep) {
