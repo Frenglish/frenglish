@@ -374,6 +374,8 @@ export async function extractStrings(
   const maps: TextMaps = { forward: {}, reverse: {} }
   const masterStyleMap: MasterStyleMap = {}
   const doc = await createDocument(html)
+  const originallyTagged = new WeakSet<Element>()
+  doc.querySelectorAll(`[${FRENGLISH_DATA_KEY}]`).forEach(el => originallyTagged.add(el as Element))
   const NodeConsts = doc.defaultView?.Node ?? { ELEMENT_NODE: 1, TEXT_NODE: 3 }
   const mutate = !!injectPlaceholders // single switch for any visible write
 
@@ -434,7 +436,12 @@ export async function extractStrings(
         await processAttributes(el, maps, injectPlaceholders, config, compress, injectDataKey, masterStyleMap, currentLanguage)
         return
       }
-      if ((node as HTMLElement).parentElement?.hasAttribute?.(FRENGLISH_DATA_KEY)) return
+      // Only skip children if the parent was originally tagged,
+      // or if we're mutating and have tagged it during this pass.
+      const parentEl = (node as HTMLElement).parentElement
+      if (parentEl && (originallyTagged.has(parentEl) || (mutate && parentEl.hasAttribute(FRENGLISH_DATA_KEY)))) {
+        return
+      }
 
       // Collapse the whole block into a single placeholder/hash (for hashing & map building).
       if (shouldCollapse(el)) {
