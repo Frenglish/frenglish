@@ -83,6 +83,45 @@ export const PLACEHOLDER_TAG_RE = /<(?:sty|href|excl)\d+\b[^>]*>/i;
 // ---------------------------------------------------------------------------
 // Utility helpers
 // ---------------------------------------------------------------------------
+
+// match tag‑names like "sty0", "href12", "excl3"
+const PLACEHOLDER_TAGNAME_RE = /^(?:sty|href|excl)\d+$/i
+
+// Scan for placeholders that have an explicit closing tag in the raw string
+export function scanPairedPlaceholders(raw: string) {
+  const paired = new Set<string>()
+  for (const m of raw.matchAll(/<\/((?:sty|href|excl)\d+)>/gi)) {
+    paired.add(m[1].toLowerCase())
+  }
+  return paired
+}
+
+function serializeOpenPlaceholderTag(el: Element) {
+  let s = `<${el.tagName.toLowerCase()}`
+  for (const a of Array.from(el.attributes)) {
+    s += ` ${a.name}="${String(a.value).replace(/"/g, '&quot;')}"`
+  }
+  s += '>'
+  return s
+}
+
+// Turn *unpaired* placeholder elements (e.g., <sty0> with no </sty0> in the raw)
+// back into a TEXT node "<sty0>" followed by their children.
+// This prevents the parser from auto‑inserting "</sty0>".
+export function neutralizeUnpairedPlaceholders(root: Element | DocumentFragment, paired: Set<string>) {
+  const all = Array.from(root.querySelectorAll('*'))
+  for (const el of all) {
+    const tag = el.tagName.toLowerCase()
+    if (PLACEHOLDER_TAGNAME_RE.test(tag) && !paired.has(tag)) {
+      const doc = el.ownerDocument!
+      const frag = doc.createDocumentFragment()
+      frag.appendChild(doc.createTextNode(serializeOpenPlaceholderTag(el)))
+      while (el.firstChild) frag.appendChild(el.firstChild)
+      el.replaceWith(frag)
+    }
+  }
+}
+
 const generatePlaceholder = (txt: string) => SHA256(txt.trim()).toString()
 
 export type TextMaps = { forward: Record<string, string>; reverse: Record<string, string> }
@@ -197,6 +236,7 @@ async function processAttributes(
   currentLanguage?: string
 ) {
   const tag = el.tagName.toLowerCase()
+  const mutate = !!inject; // ← single switch controlling visible writes
 
   // <title> is handled via the text-node path; skip here.
   if (tag === 'title') {
@@ -208,7 +248,14 @@ async function processAttributes(
     const val = el.getAttribute(attr)
     if (!val?.trim()) continue
     const rep = await upsertPlaceholder(val, maps, inject, config, compress, masterStyleMap)
-    if (rep) el.setAttribute(attr, rep.newText)
+    if (!rep) continue
+    if (injectDataKey) {
+      el.setAttribute(`${FRENGLISH_DATA_KEY}-${attr}`, rep.hash)
+    }
+    // Only replace visible value when we're injecting placeholders
+    if (mutate) {
+      el.setAttribute(attr, rep.newText)
+    }
   }
 
   // value="…" on buttons / inputs
@@ -219,7 +266,10 @@ async function processAttributes(
     (tag === 'button' || tag === 'option' || (tag === 'input' && ['button', 'submit', 'reset'].includes(type)))
   ) {
     const rep = await upsertPlaceholder(valAttr, maps, inject, config, compress, masterStyleMap)
-    if (rep) el.setAttribute('value', rep.newText)
+    if (rep) {
+      if (injectDataKey) el.setAttribute(`${FRENGLISH_DATA_KEY}-value`, rep.hash)
+      if (mutate) el.setAttribute('value', rep.newText)
+    }
   }
 
   // <meta name|property|itemprop=... content="...">
@@ -236,22 +286,14 @@ async function processAttributes(
     const metaKey = rawKey.toLowerCase().trim()
 
     // ---- Heuristics used by most i18n pipelines ----
-    // 1) A compact deny-list for clearly non-translatable keys
     const NON_COPY_RE =
       /(?:^|:)(?:type|url|image|video|audio|locale|site|card|creator|app(?:[_:-]?id)?|id|token|verification|verify|robots|viewport|charset|theme-?color|color-?scheme|referrer|generator|format-detection)\b/
-    // 2) A compact allow-list for known user-facing text
     const ALLOW_EXACT = new Set([
-      // generic
       'description', 'keywords', 'author', 'application-name', 'apple-mobile-web-app-title', 'site_name',
-      // opengraph
       'og:title', 'og:description', 'og:site_name', 'og:image:alt',
-      // twitter
       'twitter:title', 'twitter:description', 'twitter:image:alt',
-      // article/social
       'article:section', 'article:tag',
-      // dc / common SEO variants
       'dc.title', 'dc.description',
-      // schema.org itemprop
       'name', 'headline', 'alternativeheadline', 'description', 'caption', 'about', 'abstract'
     ])
 
@@ -266,10 +308,8 @@ async function processAttributes(
       if (!k) return false
       if (NON_COPY_RE.test(k)) return false
       if (ALLOW_EXACT.has(k)) return true
-      // Patterns that typically indicate visible copy
       if (/(^|:)(title|description)$/.test(k)) return true
       if (/:alt$/.test(k)) return true
-      // Fallback: if the key is generic and the content looks like human text
       if (k === 'site_name' || k === 'application-name' || k === 'apple-mobile-web-app-title') return true
       return isLikelyHumanReadable
     }
@@ -277,11 +317,14 @@ async function processAttributes(
     if (isTranslatableMetaKey(metaKey)) {
       const rep = await upsertPlaceholder(content, maps, inject, config, compress, masterStyleMap)
       if (rep) {
-        el.setAttribute('content', rep.newText)
-        // ✅ anchor this meta for reinjection regardless of name/property/itemprop
+        // anchor meta for reinjection; do this regardless of mutate
         if (injectDataKey) {
           el.setAttribute(FRENGLISH_DATA_KEY, rep.hash)
           el.setAttribute('data-frenglish-attr', 'content')
+        }
+        // only change visible content when injecting
+        if (mutate) {
+          el.setAttribute('content', rep.newText)
         }
       }
     }
@@ -298,7 +341,7 @@ async function processAttributes(
     const rep = await upsertPlaceholder(el.textContent, maps, inject, config, compress, masterStyleMap)
     if (rep) {
       if (injectDataKey) el.setAttribute(FRENGLISH_DATA_KEY, rep.hash)
-      el.textContent = rep.newText
+      if (mutate) el.textContent = rep.newText
     }
   }
 }
@@ -326,82 +369,90 @@ export async function extractStrings(
   config: Configuration,
   compress = true,
   injectDataKey = true,
-  currentLanguage: string
+  currentLanguage?: string
 ): Promise<ExtractionResult & { styleMap: MasterStyleMap }> {
   const maps: TextMaps = { forward: {}, reverse: {} }
-  const masterStyleMap:  MasterStyleMap  = {}
+  const masterStyleMap: MasterStyleMap = {}
   const doc = await createDocument(html)
   const NodeConsts = doc.defaultView?.Node ?? { ELEMENT_NODE: 1, TEXT_NODE: 3 }
-  /**
-   * Checks if an element or any of its ancestors are marked as untranslatable.
-   * This is the master check to exclude components like the WP Admin Bar.
-   * @param element The element to check.
-   * @returns `true` if the element should be skipped, otherwise `false`.
-   */
+  const mutate = !!injectPlaceholders // single switch for any visible write
+
+  if (mutate && PLACEHOLDER_TAG_RE.test(html)) {
+    try {
+      const pairedInRaw = scanPairedPlaceholders(html) // e.g., set('sty0','href1',…)
+      neutralizeUnpairedPlaceholders(doc.documentElement, pairedInRaw)
+    } catch { }
+  }
+
   const isUntranslatable = (element: Element): boolean => {
-    let current: Element | null = element;
+    let current: Element | null = element
     while (current) {
-      // Check for specific markers
       if (
-        current.id === 'wpadminbar' ||                  // Specifically exclude the WordPress admin bar
-        current.classList.contains('no-translation') || // Exclude based on the 'no-translation' class
-        current.hasAttribute('data-no-translation') ||  // Exclude based on a data attribute
-        current.getAttribute('translate') === 'no'      // Respect the standard HTML 'translate' attribute
+        (current as HTMLElement).id === 'wpadminbar' ||
+        current.classList.contains('no-translation') ||
+        current.hasAttribute('data-no-translation') ||
+        current.getAttribute('translate') === 'no'
       ) {
-        return true;
+        return true
       }
-      current = current.parentElement;
+      current = current.parentElement
     }
-    return false;
-  };
+    return false
+  }
+
   const walk = async (node: Node): Promise<void> => {
     if (node.nodeType === NodeConsts.ELEMENT_NODE) {
-      const el = node as Element
-      if (isUntranslatable(el)) {
-        return;
-      }
+      const el = node as HTMLElement
+      if (isUntranslatable(el)) return
+
       const tag = el.tagName.toLowerCase()
       if (SKIPPED_TAGS.has(tag)) {
         if (tag === 'script' && el.id === '__NEXT_DATA__') {
           try {
             const json = JSON.parse(el.textContent || '{}')
-            if (json.props) {
+            if (json?.props) {
               await processDataValue(json.props, maps, injectPlaceholders, config, compress, masterStyleMap)
-              if (injectPlaceholders) el.textContent = JSON.stringify(json)
+              if (mutate) el.textContent = JSON.stringify(json)
             }
-          } catch {
-            /* swallow malformed JSON */
-          }
+          } catch {}
         }
         return
       }
 
-      const isIconElement = (tag === 'a' || tag === 'i' || tag === 'span') && !el.textContent?.trim();
-      const hasIconClass = Array.from(el.classList).some(cls => cls.includes('icon') || cls.includes('ionicon'));
-
+      const isIconElement =
+        (tag === 'a' || tag === 'i' || tag === 'span') && !el.textContent?.trim()
+      const hasIconClass = Array.from(el.classList || []).some(
+        cls => cls.includes('icon') || cls.includes('ionicon')
+      )
       if (isIconElement && hasIconClass) {
-        await processAttributes(el, maps, injectPlaceholders, config, compress, injectDataKey, masterStyleMap, currentLanguage);
-        return;
-      }
-
-      if (el.hasAttribute(FRENGLISH_DATA_KEY)) {
-        return;
-      }
-
-      if (el.classList.contains('ionicon')) {
         await processAttributes(el, maps, injectPlaceholders, config, compress, injectDataKey, masterStyleMap, currentLanguage)
         return
       }
 
-      if (node.parentElement?.hasAttribute(FRENGLISH_DATA_KEY)) {
+      if (el.hasAttribute(FRENGLISH_DATA_KEY)) return
+      if (el.classList?.contains('ionicon')) {
+        await processAttributes(el, maps, injectPlaceholders, config, compress, injectDataKey, masterStyleMap, currentLanguage)
         return
       }
+      if ((node as HTMLElement).parentElement?.hasAttribute?.(FRENGLISH_DATA_KEY)) return
 
+      // Collapse the whole block into a single placeholder/hash (for hashing & map building).
       if (shouldCollapse(el)) {
         const rep = await upsertPlaceholder(el.innerHTML, maps, injectPlaceholders, config, compress, masterStyleMap)
         if (rep) {
           if (injectDataKey) el.setAttribute(FRENGLISH_DATA_KEY, rep.hash)
-          el.innerHTML = rep.newText
+
+          if (mutate) {
+            // This is the only branch that writes HTML; do it, then neutralize any unpaired <styN> etc inside.
+            el.innerHTML = rep.newText
+            try {
+              if (PLACEHOLDER_TAG_RE.test(rep.newText)) {
+                const localPaired = scanPairedPlaceholders(rep.newText)
+                neutralizeUnpairedPlaceholders(el, localPaired)
+              }
+            } catch { /* best-effort */ }
+          }
+
           await processAttributes(el, maps, injectPlaceholders, config, compress, injectDataKey, masterStyleMap, currentLanguage)
         }
         return
@@ -409,24 +460,25 @@ export async function extractStrings(
 
       await processAttributes(el, maps, injectPlaceholders, config, compress, injectDataKey, masterStyleMap, currentLanguage)
 
-      // recursive
-      for (const child of el.childNodes) {
+      for (const child of Array.from(el.childNodes)) {
         await walk(child)
       }
       return
     }
 
     if (node.nodeType === NodeConsts.TEXT_NODE) {
-      const parent = node.parentElement
-      if (!parent || !node.textContent?.trim()) return
+      const parent = (node as Text).parentElement
+      const raw = node.textContent || ''
+      if (!parent || !raw.trim()) return
+
       const pTag = parent.tagName.toLowerCase()
 
-      // special handling for <title>
+      // <title> special case
       if (pTag === 'title') {
-        const rep = await upsertPlaceholder(node.textContent, maps, injectPlaceholders, config, compress, masterStyleMap)
+        const rep = await upsertPlaceholder(raw, maps, injectPlaceholders, config, compress, masterStyleMap)
         if (rep) {
           if (injectDataKey) parent.setAttribute(FRENGLISH_DATA_KEY, rep.hash)
-          node.textContent = rep.newText
+          if (mutate) (node as Text).textContent = rep.newText // safe: remains a TEXT node
         }
         return
       }
@@ -435,35 +487,33 @@ export async function extractStrings(
         parent.hasAttribute(FRENGLISH_DATA_KEY) ||
         SKIPPED_TAGS.has(pTag) ||
         pTag === 'textarea' ||
-        (pTag === 'input' && !['button', 'submit', 'reset'].includes(parent.getAttribute('type')?.toLowerCase() || ''))
+        (pTag === 'input' &&
+          !['button', 'submit', 'reset'].includes((parent.getAttribute('type') || '').toLowerCase()))
       ) {
         return
       }
 
-      const rep = await upsertPlaceholder(node.textContent, maps, injectPlaceholders, config, compress, masterStyleMap)
+      const rep = await upsertPlaceholder(raw, maps, injectPlaceholders, config, compress, masterStyleMap)
       if (rep) {
-        const span = doc.createElement('span')
-        if (injectDataKey) span.setAttribute(FRENGLISH_DATA_KEY, rep.hash)
-        span.textContent = rep.newText
-        parent.replaceChild(span, node)
+        if (mutate) {
+          const span = doc.createElement('span')
+          if (injectDataKey) span.setAttribute(FRENGLISH_DATA_KEY, rep.hash)
+          span.textContent = rep.newText
+          parent.replaceChild(span, node)
+        } else {
+          // No visible mutation: just tag the parent so applyTranslations can target it later.
+          if (injectDataKey) parent.setAttribute(FRENGLISH_DATA_KEY, rep.hash)
+        }
       }
     }
   }
 
   // process head and body
-  if (doc.head) {
-    for (const node of doc.head.childNodes) {
-      await walk(node)
-    }
-  }
-  if (doc.body) {
-    for (const node of doc.body.childNodes) {
-      await walk(node)
-    }
-  }
+  if (doc.head) for (const n of Array.from(doc.head.childNodes)) await walk(n)
+  if (doc.body) for (const n of Array.from(doc.body.childNodes)) await walk(n)
 
   return {
-    modifiedHtml: doc.documentElement.outerHTML,
+    modifiedHtml: doc.documentElement.outerHTML, // unchanged visually if mutate=false
     textMap: maps.forward,
     styleMap: masterStyleMap,
   }

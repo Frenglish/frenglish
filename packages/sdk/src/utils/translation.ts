@@ -112,19 +112,20 @@ export const pollForTranslation = async (
         },
         errorContext: 'Failed to get translation content',
       })
+    } else if (translationStatus === TranslationStatus.OVER_HARD_LIMIT) {
+      console.warn(
+        '[FrenglishSDK] Project is over the hard limit. Returning best-effort files built from the latest text map.'
+      );
+      return apiRequest<TranslationResponse[]>('/api/translation/get-translation', {
+        body: { translationId, apiKey },
+        errorContext: 'Failed to get translation content - Over hard limit',
+      });
     } else if (translationStatus === TranslationStatus.SKIPPED) {
       return []
     } else if (translationStatus === TranslationStatus.CANCELLED) {
       throw new Error('Translation cancelled')
     } else if (translationStatus === TranslationStatus.QUEUED || translationStatus === TranslationStatus.PROCESSING) {
       await new Promise(resolve => setTimeout(resolve, pollingInterval))
-    } else if (translationStatus === TranslationStatus.OVER_HARD_LIMIT) {
-      return apiRequest<TranslationResponse[]>('/api/project/request-text-map', {
-        body: {
-          apiKey,
-        },
-        errorContext: 'Over translation hard limit - failed to translate new content',
-      })
     } else {
       throw new Error(`Translation (ID: ${translationId}) has unexpected status: ${translationStatus}`)
     }
