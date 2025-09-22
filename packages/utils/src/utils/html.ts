@@ -245,6 +245,7 @@ async function processAttributes(
 
   // Generic attribute handling
   for (const attr of TRANSLATABLE_ATTRIBUTES) {
+    if (el.hasAttribute(`${FRENGLISH_DATA_KEY}-${attr}`)) continue
     const val = el.getAttribute(attr)
     if (!val?.trim()) continue
     const rep = await upsertPlaceholder(val, maps, inject, config, compress, masterStyleMap)
