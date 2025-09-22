@@ -11,8 +11,24 @@ export interface Configuration {
     rulesPerLanguage: Rule[] | null;
     oneTimeTranslation: boolean;
     keyFilters: Filter | null;
+    languageAvailability: LanguageAvailabilityPayload | null;
     createdAt: string | null;
     lastModifiedAt: string | null;
+}
+
+export interface LanguageAvailabilityEntry {
+  id: string;               // stable ID (e.g., sha1(path) or CMS ID)
+  path: string;             // e.g., "/quebec"
+  title?: string;           // optional display title
+  enabledLocales: string[]; // locales where this page exists (e.g., ["fr-ca", "en-ca"])
+  redirectBehaviour: string;
+}
+
+export interface LanguageAvailabilityPayload {
+  entries: LanguageAvailabilityEntry[];
+  settings?: {
+    unavailableBehavior?: string; // default "/"
+  };
 }
 
 export interface ConfigurationResponse {
