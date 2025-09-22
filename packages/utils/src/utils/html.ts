@@ -222,32 +222,66 @@ async function processAttributes(
     if (rep) el.setAttribute('value', rep.newText)
   }
 
-  // <meta name|property=... content="...">
+  // <meta name|property|itemprop=... content="...">
   if (tag === 'meta') {
-    const content = el.getAttribute('content')
-    if (!content) return
-    const name = (el.getAttribute('name') || el.getAttribute('property') || '').toLowerCase()
+    const content = el.getAttribute('content') || ''
+    if (!content.trim()) return
 
-    if (
-      [
-        'description',
-        'keywords',
-        'author',
-        'og:title',
-        'og:description',
-        'twitter:title',
-        'twitter:description',
-        'application-name',
-      ].includes(name)
-    ) {
+    // Which key field is used on this tag?
+    const rawKey =
+      el.getAttribute('name') ||
+      el.getAttribute('property') ||
+      el.getAttribute('itemprop') ||
+      ''
+    const metaKey = rawKey.toLowerCase().trim()
+
+    // ---- Heuristics used by most i18n pipelines ----
+    // 1) A compact deny-list for clearly non-translatable keys
+    const NON_COPY_RE =
+      /(?:^|:)(?:type|url|image|video|audio|locale|site|card|creator|app(?:[_:-]?id)?|id|token|verification|verify|robots|viewport|charset|theme-?color|color-?scheme|referrer|generator|format-detection)\b/
+    // 2) A compact allow-list for known user-facing text
+    const ALLOW_EXACT = new Set([
+      // generic
+      'description', 'keywords', 'author', 'application-name', 'apple-mobile-web-app-title', 'site_name',
+      // opengraph
+      'og:title', 'og:description', 'og:site_name', 'og:image:alt',
+      // twitter
+      'twitter:title', 'twitter:description', 'twitter:image:alt',
+      // article/social
+      'article:section', 'article:tag',
+      // dc / common SEO variants
+      'dc.title', 'dc.description',
+      // schema.org itemprop
+      'name', 'headline', 'alternativeheadline', 'description', 'caption', 'about', 'abstract'
+    ])
+
+    const looksLikeUrl = /^(?:https?:)?\/\//i.test(content) || /^(?:mailto:|tel:|data:)/i.test(content) || content.startsWith('/')
+    const looksLikeLongToken = !/\s/.test(content) && content.length > 64
+    const looksLikeHexish = /^[0-9a-f]{24,}$/i.test(content)
+    const hasLetters = /[a-z]/i.test(content)
+
+    const isLikelyHumanReadable = hasLetters && !looksLikeUrl && !looksLikeLongToken && !looksLikeHexish
+
+    const isTranslatableMetaKey = (k: string): boolean => {
+      if (!k) return false
+      if (NON_COPY_RE.test(k)) return false
+      if (ALLOW_EXACT.has(k)) return true
+      // Patterns that typically indicate visible copy
+      if (/(^|:)(title|description)$/.test(k)) return true
+      if (/:alt$/.test(k)) return true
+      // Fallback: if the key is generic and the content looks like human text
+      if (k === 'site_name' || k === 'application-name' || k === 'apple-mobile-web-app-title') return true
+      return isLikelyHumanReadable
+    }
+
+    if (isTranslatableMetaKey(metaKey)) {
       const rep = await upsertPlaceholder(content, maps, inject, config, compress, masterStyleMap)
       if (rep) {
         el.setAttribute('content', rep.newText)
-
-        // 🔑 Minimal fix: mark the element with the key and which attribute to fill on reinjection
+        // ✅ anchor this meta for reinjection regardless of name/property/itemprop
         if (injectDataKey) {
-          el.setAttribute(FRENGLISH_DATA_KEY, rep.hash)          // e.g., data-frenglish-key="abc123..."
-          el.setAttribute('data-frenglish-attr', 'content')      // tells reinjector which attr to replace
+          el.setAttribute(FRENGLISH_DATA_KEY, rep.hash)
+          el.setAttribute('data-frenglish-attr', 'content')
         }
       }
     }
