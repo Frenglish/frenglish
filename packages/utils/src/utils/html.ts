@@ -323,10 +323,10 @@ export async function extractStrings(
   const walk = async (node: Node): Promise<void> => {
     if (node.nodeType === NodeConsts.ELEMENT_NODE) {
       const el = node as Element
-      const tag = el.tagName.toLowerCase()
       if (isUntranslatable(el)) {
         return;
       }
+      const tag = el.tagName.toLowerCase()
       if (SKIPPED_TAGS.has(tag)) {
         if (tag === 'script' && el.id === '__NEXT_DATA__') {
           try {
@@ -340,6 +340,18 @@ export async function extractStrings(
           }
         }
         return
+      }
+
+      const isIconElement = (tag === 'a' || tag === 'i' || tag === 'span') && !el.textContent?.trim();
+      const hasIconClass = Array.from(el.classList).some(cls => cls.includes('icon') || cls.includes('ionicon'));
+
+      if (isIconElement && hasIconClass) {
+        await processAttributes(el, maps, injectPlaceholders, config, compress, injectDataKey, masterStyleMap, currentLanguage);
+        return;
+      }
+
+      if (el.hasAttribute(FRENGLISH_DATA_KEY)) {
+        return;
       }
 
       if (el.classList.contains('ionicon')) {
