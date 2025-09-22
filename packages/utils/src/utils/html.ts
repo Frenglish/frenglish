@@ -42,6 +42,35 @@ const ATOMIC_CHILD_SET = new Set([
   'img', 'a', 'picture', 'source',
 ])
 
+const DO_NOT_COLLAPSE_CLASSES = new Set([
+  // --- Navigation & Interactive ---
+  'awb-menu__li',
+  'awb-submenu__li',
+  'menu-item',
+  'breadcrumb',
+  'pagination',
+  'page-numbers',
+  'tab',
+  // --- Layout & Grid (Page Builders) ---
+  'card',
+  'col',
+  'column',
+  'fusion-builder-column',
+  'fusion-layout-column',
+  'elementor-widget-container',
+  'pricing-table',
+  // --- Widgets & Modules ---
+  'slide',
+  'carousel-item',
+  'swiper-slide',
+  'accordion-item',
+  'testimonial',
+  'modal',
+  // --- Forms ---
+  'form-group',
+  'form-row',
+]);
+
 // – Tags (and matching <script> / <style>) that we *never* walk for text
 export const SKIPPED_TAGS = new Set(['script', 'style', 'noscript', 'code', 'pre', 'template', 'svg'])
 
@@ -135,6 +164,16 @@ const isAtomicContainer = (el: Element) => {
 }
 
 export const shouldCollapse = (el: Element) => {
+  for (const className of DO_NOT_COLLAPSE_CLASSES) {
+    if (el.classList.contains(className)) {
+      return false;
+    }
+  }
+
+  if (Array.from(el.classList).some(cls => cls.startsWith('col-') || cls.startsWith('wp-block-'))) {
+    return false;
+  }
+
   const tag = el.tagName.toLowerCase();
   if (tag === 'html' || tag === 'head' || tag === 'body' || SKIPPED_TAGS.has(tag)) return false;
   if (el.hasAttribute(FRENGLISH_DATA_KEY)) return false;
@@ -259,12 +298,35 @@ export async function extractStrings(
   const masterStyleMap:  MasterStyleMap  = {}
   const doc = await createDocument(html)
   const NodeConsts = doc.defaultView?.Node ?? { ELEMENT_NODE: 1, TEXT_NODE: 3 }
-
+  /**
+   * Checks if an element or any of its ancestors are marked as untranslatable.
+   * This is the master check to exclude components like the WP Admin Bar.
+   * @param element The element to check.
+   * @returns `true` if the element should be skipped, otherwise `false`.
+   */
+  const isUntranslatable = (element: Element): boolean => {
+    let current: Element | null = element;
+    while (current) {
+      // Check for specific markers
+      if (
+        current.id === 'wpadminbar' ||                  // Specifically exclude the WordPress admin bar
+        current.classList.contains('no-translation') || // Exclude based on the 'no-translation' class
+        current.hasAttribute('data-no-translation') ||  // Exclude based on a data attribute
+        current.getAttribute('translate') === 'no'      // Respect the standard HTML 'translate' attribute
+      ) {
+        return true;
+      }
+      current = current.parentElement;
+    }
+    return false;
+  };
   const walk = async (node: Node): Promise<void> => {
     if (node.nodeType === NodeConsts.ELEMENT_NODE) {
       const el = node as Element
       const tag = el.tagName.toLowerCase()
-
+      if (isUntranslatable(el)) {
+        return;
+      }
       if (SKIPPED_TAGS.has(tag)) {
         if (tag === 'script' && el.id === '__NEXT_DATA__') {
           try {
