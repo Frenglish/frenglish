@@ -629,7 +629,7 @@ export function decompressHTML(
     prev = out
     out = out.replace(RE, (m, phTag, _attrs, content) => {
       const info = styleMap[phTag]
-      if (!info) return m
+      if (!info || !info.attributes || !info.tagName) return m
       let attrs = ''
       for (const [k, v] of Object.entries(info.attributes)) {
         attrs += ` ${k}="${escapeAttribute(v)}"`
