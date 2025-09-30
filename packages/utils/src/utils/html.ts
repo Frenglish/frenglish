@@ -275,58 +275,54 @@ async function processAttributes(
 
   // <meta name|property|itemprop=... content="...">
   if (tag === 'meta') {
-    const content = el.getAttribute('content') || ''
-    if (!content.trim()) return
+    const content = el.getAttribute('content') || '';
+    if (!content.trim()) return;
 
     // Which key field is used on this tag?
     const rawKey =
       el.getAttribute('name') ||
       el.getAttribute('property') ||
       el.getAttribute('itemprop') ||
-      ''
-    const metaKey = rawKey.toLowerCase().trim()
+      '';
+    const metaKey = rawKey.toLowerCase().trim();
 
-    // ---- Heuristics used by most i18n pipelines ----
-    const NON_COPY_RE =
-      /(?:^|:)(?:type|url|image|video|audio|locale|site|card|creator|app(?:[_:-]?id)?|id|token|verification|verify|robots|viewport|charset|theme-?color|color-?scheme|referrer|generator|format-detection)\b/
-    const ALLOW_EXACT = new Set([
-      'description', 'keywords', 'author', 'application-name', 'apple-mobile-web-app-title', 'site_name',
-      'og:title', 'og:description', 'og:site_name', 'og:image:alt',
-      'twitter:title', 'twitter:description', 'twitter:image:alt',
-      'article:section', 'article:tag',
-      'dc.title', 'dc.description',
-      'name', 'headline', 'alternativeheadline', 'description', 'caption', 'about', 'abstract'
-    ])
+    const explicitSkip  = el.getAttribute('data-frenglish-skip')  === 'content';
+    const explicitForce = el.getAttribute('data-frenglish-force') === 'content';
+    if (explicitSkip) return;
 
-    const looksLikeUrl = /^(?:https?:)?\/\//i.test(content) || /^(?:mailto:|tel:|data:)/i.test(content) || content.startsWith('/')
-    const looksLikeLongToken = !/\s/.test(content) && content.length > 64
-    const looksLikeHexish = /^[0-9a-f]{24,}$/i.test(content)
-    const hasLetters = /[a-z]/i.test(content)
+    // HARD blacklist: never hash/translate these keys unless explicitForce is set.
+    const HARD_BLACKLIST_RE =
+      /(?:^|:)(?:published_time|modified_time|updated_time|article:published_time|article:modified_time|date|datetime|release_date|expiry|expiration|url|image(?::(?:secure_url|url|width|height|type))?|video|audio|locale|site_name|site|app(?:[_:-]?id)?|id|token|verification|verify|robots|viewport|charset|theme-?color|color-?scheme|referrer|generator|format-detection|twitter:card|twitter:site|twitter:label1|twitter:data1|og:type)\b/;
 
-    const isLikelyHumanReadable = hasLetters && !looksLikeUrl && !looksLikeLongToken && !looksLikeHexish
+    const looksLikeUrl   = /^(?:https?:)?\/\//i.test(content) || /^(?:mailto:|tel:|data:)/i.test(content) || content.startsWith('/');
+    const looksLikeEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(content);
+    const looksLikeHexId = /^[0-9a-f]{16,}$/i.test(content);
+    const looksLikeDate  = /^\d{4}-\d{2}-\d{2}(?:[ tT]\d{2}:\d{2}(?::\d{2})?(?:Z|[+-]\d{2}:?\d{2})?)?$/.test(content);
+    const looksLikeJSON  = /^[\[\{].*[\]\}]$/.test(content);
 
-    const isTranslatableMetaKey = (k: string): boolean => {
-      if (!k) return false
-      if (NON_COPY_RE.test(k)) return false
-      if (ALLOW_EXACT.has(k)) return true
-      if (/(^|:)(title|description)$/.test(k)) return true
-      if (/:alt$/.test(k)) return true
-      if (k === 'site_name' || k === 'application-name' || k === 'apple-mobile-web-app-title') return true
-      return isLikelyHumanReadable
+    const hardBlocked = HARD_BLACKLIST_RE.test(metaKey) || looksLikeUrl || looksLikeEmail || looksLikeHexId || looksLikeDate || looksLikeJSON;
+
+    const COPY_HINT_RE =
+      /(^|:)(title|description|keywords?|alt|caption|headline|application-name|apple-mobile-web-app-title)$/;
+
+    // Decide
+    const allowByKey = COPY_HINT_RE.test(metaKey) || /:alt$/.test(metaKey);
+    const shouldTranslate = explicitForce || (!hardBlocked && allowByKey);
+
+    if (!shouldTranslate) {
+      // Do NOT hash, do NOT tag, leave content as-is.
+      return;
     }
 
-    if (isTranslatableMetaKey(metaKey)) {
-      const rep = await upsertPlaceholder(content, maps, inject, config, compress, masterStyleMap)
-      if (rep) {
-        // anchor meta for reinjection; do this regardless of mutate
-        if (injectDataKey) {
-          el.setAttribute(FRENGLISH_DATA_KEY, rep.hash)
-          el.setAttribute('data-frenglish-attr', 'content')
-        }
-        // only change visible content when injecting
-        if (mutate) {
-          el.setAttribute('content', rep.newText)
-        }
+    // We translate: hash, tag, and optionally inject placeholder value
+    const rep = await upsertPlaceholder(content, maps, inject, config, compress, masterStyleMap)
+    if (rep) {
+      if (injectDataKey) {
+        el.setAttribute(FRENGLISH_DATA_KEY, rep.hash)
+        el.setAttribute('data-frenglish-attr', 'content')
+      }
+      if (mutate) {
+        el.setAttribute('content', rep.newText);
       }
     }
     return
