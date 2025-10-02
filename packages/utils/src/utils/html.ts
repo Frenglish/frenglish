@@ -1150,7 +1150,7 @@ const localeMatchesConditional = (
 export async function pruneUnavailableUI(
   html: string,
   configuration: Configuration,
-  opts: { strategy?: "remove" | "hide"; ancestorSelectors?: string[]; baseUrl?: string } = {}
+  opts: { strategy?: "remove" | "hide"; ancestorSelectors?: string[]; baseUrl?: string, lang?: string } = {}
 ): Promise<string> {
   const entries = configuration?.languageAvailability?.entries || [];
   if (!html || !entries.length) return html;
@@ -1163,10 +1163,10 @@ export async function pruneUnavailableUI(
   const { exact, noloc } = buildPathIndex(configuration);
 
   // derive language from the HTML, fall back to config
-  const lang = detectLanguageFromHtml(
-    doc,
-    configuration.originLanguage || (configuration.languages?.[0] ?? "")
-  );
+  const configuredOrigin = configuration.originLanguage || (configuration.languages?.[0] ?? "");
+  const lang =
+    (opts.lang && String(opts.lang).toLowerCase()) ||
+    detectLanguageFromHtml(doc, configuredOrigin);
   const allLocales = (configuration as any)?.locales ?? configuration?.languages ?? [];
 
   const removeOurDisplayNone = (el: Element) => {
