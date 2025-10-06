@@ -17,9 +17,11 @@ export interface IFrenglishSDK {
     partialConfig?: PartialConfiguration
   ): Promise<string | string[] | undefined>;
 
-  getTextAndStyleMap(): Promise<File | null>;
+  getTextAndStyleMap(requestedLang: string): Promise<File | null>;
 
-  getTextMap(): Promise<File | null>;
+  getTextMap(requestedLang: string): Promise<File | null>;
+
+  getTranslatedFile(requestedLang: string, content: string | Buffer, fileId: string): Promise<string | Buffer>;
 
   upload(files: FileContentWithLanguage[]): Promise<void>;
 

@@ -167,6 +167,23 @@ export async function translate(
     errorContext: 'Failed to request translation',
   })
 
+  // If we are translating a specific language, we make sure other languages are transalted too in subsequent call
+  if (parsedConfig && parsedConfig.languages && parsedConfig?.languages?.length > 0) {
+    const { languages: _ignored, ...languageLessConfig } = parsedConfig ?? {};
+
+    apiRequest<RequestTranslationResponse>('/api/translation/request-translation', {
+      body: {
+        content,
+        isFullTranslation,
+        filenames,
+        partialConfig: languageLessConfig, // translate all other languages too
+        apiKey,
+        paths,
+      },
+      errorContext: 'Failed to request translation',
+    })
+  }
+
   const translationContent = await pollForTranslation(data.translationId, apiKey)
   return { translationId: data.translationId, content: translationContent }
 }
@@ -282,10 +299,11 @@ export async function getTranslationContent(translationId: number, apiKey: strin
  * - null if either map does not exist for the project.
  * @throws If the API request fails.
  */
-export async function getTextAndStyleMap(apiKey: string): Promise<{ content: TextAndStyleMapResponse } | null> {
+export async function getTextAndStyleMap(apiKey: string, requestedLang?: string): Promise<{ content: TextAndStyleMapResponse } | null> {
   return apiRequest<{ content: TextAndStyleMapResponse } | null>('/api/project/request-text-and-style-map', {
     body: {
       apiKey,
+      requestedLang
     },
     errorContext: 'Failed to fetch project text and style maps',
   });
@@ -300,13 +318,34 @@ export async function getTextAndStyleMap(apiKey: string): Promise<{ content: Tex
  *   - null if no text map exists
  * @throws If the request fails.
  */
-export async function getTextMap(apiKey: string): Promise<{ content: FlatJSON[] } | null> {
+export async function getTextMap(apiKey: string, requestedLang?: string): Promise<{ content: FlatJSON[] } | null> {
   return apiRequest<{ content: FlatJSON[] } | null>('/api/project/request-text-map', {
     body: {
       apiKey,
+      requestedLang
     },
     errorContext: 'Failed to fetch project text map',
   })
+}
+
+/**
+ * Fetches the translated file for a specific language.
+ *
+ * @returns {Promise<{ content: FlatJSON[] } | null>} A promise that resolves to:
+ *   - A string containing the translated file content if it exists
+ *   - A Buffer containing the translated file content if it is binary
+ * @throws If the request fails.
+ */
+export async function getTranslatedFile(apiKey: string, requestedLang: string, content: string | Buffer, fileId: string): Promise< string | Buffer> {
+  return apiRequest< {content: string | Buffer} >('/api/project/request-translated-file', {
+    body: {
+      apiKey,
+      requestedLang,
+      content,
+      fileId
+    },
+    errorContext: 'Failed to request translated file',
+  }).then(res => res.content)
 }
 
 /**

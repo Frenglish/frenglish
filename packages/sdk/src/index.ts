@@ -7,6 +7,7 @@ import {
   getTranslationContent as getTranslationContentUtil,
   getTextAndStyleMap as getTextAndStyleMapUtil,
   getTextMap as getTextMapUtil,
+  getTranslatedFile as getTranslatedFileUtil,
   getSupportedFileTypes as getSupportedFileTypesUtil,
   getSupportedLanguages as getSupportedLanguagesUtil,
   getOutdatedFiles as getOutdatedFilesUtil,
@@ -139,7 +140,7 @@ export interface FrenglishSDK {
    * @returns Text map and style mapcontent if exists, null otherwise
    * @throws {Error} If text map retrieval fails
    */
-  getTextAndStyleMap(): Promise<{ content: TextAndStyleMapResponse } | null>;
+  getTextAndStyleMap(requestedLang?: string): Promise<{ content: TextAndStyleMapResponse } | null>;
 
   /**
    * Retrieves the project's text map, which contains mappings of text content.
@@ -147,7 +148,15 @@ export interface FrenglishSDK {
    * @returns Text map content if exists, null otherwise
    * @throws {Error} If text map retrieval fails
    */
-  getTextMap(): Promise<{ content: FlatJSON[] } | null>;
+  getTextMap(requestedLang?: string): Promise<{ content: FlatJSON[] } | null>;
+
+  /**
+   * Retrieves the translated file content for a specified language.
+   *
+   * @returns Translated string or content if exists, null otherwise
+   * @throws {Error} If text map retrieval fails
+   */
+  getTranslatedFile(requestedLang: string, content: string | Buffer, fileId: string): Promise<string | Buffer>;
 
   /**
    * Retrieves the default configuration settings for translations.
@@ -341,12 +350,16 @@ export function FrenglishSDK(apiKey: string): FrenglishSDK {
       return getTranslationContentUtil(translationId, apiKey)
     },
 
-    getTextMap: async () => {
-      return getTextMapUtil(apiKey)
+    getTextMap: async (requestedLang) => {
+      return getTextMapUtil(apiKey, requestedLang)
     },
 
-    getTextAndStyleMap: async () => {
-      return getTextAndStyleMapUtil(apiKey)
+    getTranslatedFile: async (requestedLang, content, fileId) => {
+      return getTranslatedFileUtil(apiKey, requestedLang, content, fileId)
+    },
+
+    getTextAndStyleMap: async (requestedLang) => {
+      return getTextAndStyleMapUtil(apiKey, requestedLang)
     },
 
     getDefaultConfiguration: async () => {

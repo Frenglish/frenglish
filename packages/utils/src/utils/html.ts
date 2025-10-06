@@ -1167,7 +1167,7 @@ export async function pruneUnavailableUI(
   const lang =
     (opts.lang && String(opts.lang).toLowerCase()) ||
     detectLanguageFromHtml(doc, configuredOrigin);
-  const allLocales = (configuration as any)?.locales ?? configuration?.languages ?? [];
+  const allLocales = configuration?.languages ?? [];
 
   const removeOurDisplayNone = (el: Element) => {
     const style = el.getAttribute("style") || "";
