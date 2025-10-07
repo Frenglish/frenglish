@@ -87,6 +87,16 @@ export const PLACEHOLDER_TAG_RE = /<(?:sty|href|excl)\d+\b[^>]*>/i;
 // match tag‑names like "sty0", "href12", "excl3"
 const PLACEHOLDER_TAGNAME_RE = /^(?:sty|href|excl)\d+$/i
 
+export function canonicalizeForHash(s: string): string {
+  return String(s ?? '')
+    .normalize('NFC')        // normalize combining marks
+    .replace(/\r\n/g, '\n')  // CRLF → LF
+    .replace(/\r/g, '\n')    // stray CR → LF
+    .replace(/\u00A0/g, ' ') // NBSP → normal space
+    .replace(/[\u200B\u200C\u200D\uFEFF]/g, '') // ZW chars & BOM
+    .trim();
+}
+
 // Scan for placeholders that have an explicit closing tag in the raw string
 export function scanPairedPlaceholders(raw: string) {
   const paired = new Set<string>()
@@ -122,7 +132,11 @@ export function neutralizeUnpairedPlaceholders(root: Element | DocumentFragment,
   }
 }
 
-const generatePlaceholder = (txt: string) => SHA256(txt.trim()).toString()
+const generatePlaceholder = (txt: string) => {
+  const canon = canonicalizeForHash(txt.trim())
+  const hash = SHA256(canon).toString()
+  return hash
+};
 
 export type TextMaps = { forward: Record<string, string>; reverse: Record<string, string> }
 
@@ -151,7 +165,8 @@ async function upsertPlaceholder(raw: string | undefined | null, maps: TextMaps,
     ) => `<${slash}${prefix.toLowerCase()}${num}${rest}>`
   );
 
-  let hash = maps.reverse[compressedMiddleTextString]
+  const canonKey = canonicalizeForHash(compressedMiddleTextString)
+  let hash = maps.reverse[canonKey]
   if (!hash) {
     hash = generatePlaceholder(compressedMiddleTextString)
     maps.forward[hash] = compressedMiddleTextString
@@ -530,8 +545,7 @@ async function getCompressedInLineWithStyleMap(
 ): Promise<string> {
   const { compressed, styleMap, hrefMap } =
           await compressInlineStyling(htmlChunk, config)
-
-  const hash = SHA256(compressed).toString()
+  const hash = generatePlaceholder(compressed)
   map[hash]  = { styleMap, hrefMap }
   return compressed
 }
@@ -667,7 +681,7 @@ export async function compressHTMLTextMapValues(
     const item = originalFlatJson[i]
     if (typeof item.value === 'string' && htmlish.test(item.value)) {
       const { compressed: cmp, styleMap, hrefMap } = await compressInlineStyling(item.value, config)
-      const compressedValueHash = SHA256(cmp).toString();
+      const compressedValueHash = generatePlaceholder(cmp)
 
       compressed.push({ ...item, value: cmp })
       masterStyleMap[compressedValueHash] = { styleMap, hrefMap }
