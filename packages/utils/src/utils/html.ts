@@ -599,36 +599,34 @@ export function decompressHTML(
 ): string {
   let out = compressedString
 
-  // Compression wrappers: hrefs, styling and exclusions
-  // Updated RE to match generic placeholders like <STY0>, <HREF0>, <EXCL0>
+  // If placeholders were HTML-escaped upstream, fix them cheaply.
+  out = out.replace(/&lt;((?:sty|href|excl)\d+)([^&]*)&gt;/gi, "<$1$2>");
+
+  // Updated RE to match generic placeholders like <sty0>, <href0>, <excl0>
   const RE = /<((?:sty|href|excl)\d+)([^>]*)>(?:([\s\S]*?)<\/\1>)?/gi
+  const SELF = ['input','img','br','hr','meta','link','wbr','area','base','col','embed','param','source','track']
 
-  out = out.replace(RE, (m, phTag, newAttrs, content) => {
-    const info = styleMap[phTag]
-    if (!info) return m
+  out = out.replace(RE, (m, phTag: string, newAttrs: string = '', content?: string) => {
+    const info = styleMap[phTag.toLowerCase()]
+    if (!info || !info.tagName) return m
 
-    /* 1️⃣ parse any attrs the translator left on the tag */
+    // parse any attrs the translator left on the tag
     const parsed = Object.fromEntries(
-      [...newAttrs.matchAll(/\s+([^\s=]+)="([^"]*)"/g)]
-        .map(([, k, v]) => [k, v])
-    )
+      [...newAttrs.matchAll(/\s+([^\s=]+)="([^"]*)"/g)].map(([, k, v]) => [k, v])
+    ) as Record<string, string>
 
-    /* 2️⃣ merge: translator wins over original */
-    const final: Record<string, string> = { ...info.attributes, ...parsed }
+    // merge: translator wins over original (default attributes to {})
+    const final: Record<string, string> = { ...(info.attributes ?? {}), ...parsed }
 
-    /* 3️⃣ serialize */
+    // serialize
     let attrString = ''
     for (const [k, v] of Object.entries(final)) {
       attrString += ` ${k}="${escapeAttribute(v)}"`
     }
 
-    // Handle self-closing elements
-    const selfClosingTags = ['input', 'img', 'br', 'hr', 'meta', 'link', 'wbr', 'area', 'base', 'col', 'embed', 'param', 'source', 'track']
-    if (selfClosingTags.includes(info.tagName.toLowerCase())) {
-      return `<${info.tagName.toLowerCase()}${attrString}>`
-    }
-
-    return `<${info.tagName.toLowerCase()}${attrString}>${content || ''}</${info.tagName.toLowerCase()}>`
+    const tag = info.tagName.toLowerCase()
+    if (SELF.includes(tag)) return `<${tag}${attrString}>`
+    return `<${tag}${attrString}>${content || ''}</${tag}>`
   })
 
   // run repeatedly so we handle nested placeholders in one call
@@ -637,28 +635,26 @@ export function decompressHTML(
   do {
     if (++pass > 20) break
     prev = out
-    out = out.replace(RE, (m, phTag, _attrs, content) => {
-      const info = styleMap[phTag]
-      if (!info || !info.attributes || !info.tagName) return m
+    out = out.replace(RE, (m, phTag: string, _attrs: string, content?: string) => {
+      const info = styleMap[phTag.toLowerCase()]
+      // don't require attributes; some entries (e.g., br) have none
+      if (!info || !info.tagName) return m
+
       let attrs = ''
-      for (const [k, v] of Object.entries(info.attributes)) {
+      for (const [k, v] of Object.entries((info.attributes ?? {}) as Record<string, string>)) {
         attrs += ` ${k}="${escapeAttribute(v)}"`
       }
 
-      // Handle self-closing elements
-      const selfClosingTags = ['input', 'img', 'br', 'hr', 'meta', 'link']
-      if (selfClosingTags.includes(info.tagName.toLowerCase())) {
-        return `<${info.tagName.toLowerCase()}${attrs}>`
-      }
-
-      return `<${info.tagName.toLowerCase()}${attrs}>${content || ''}</${info.tagName.toLowerCase()}>`
+      const tag = info.tagName.toLowerCase()
+      if (SELF.includes(tag)) return `<${tag}${attrs}>`
+      return `<${tag}${attrs}>${content || ''}</${tag}>`
     })
   } while (out !== prev)
 
-  /* ── 2️⃣  Restore href=\"HREF…\" attribute values  ────────────────────── */
+  /* ── Restore href placeholders ────────────────────────────────────────── */
   out = restoreHrefs(out, hrefMap)
 
-  /* ── 3️⃣  Cosmetic: force lowercase tag-names written by jsdom  ───────── */
+  /* ── Cosmetic: force lowercase tag-names written by jsdom ─────────────── */
   return out.replace(/<\/?([A-Z]+)/g, m => m.toLowerCase())
 }
 
@@ -1175,7 +1171,6 @@ export async function pruneUnavailableUI(
   const doc = await createDocument(html);
   const baseUrl = opts.baseUrl || doc.baseURI || "https://example.local";
   const { exact, noloc } = buildPathIndex(configuration);
-  const pairedInRaw = PLACEHOLDER_TAG_RE.test(html) ? scanPairedPlaceholders(html) : new Set<string>();
 
   // derive language from the HTML, fall back to config
   const configuredOrigin = configuration.originLanguage || (configuration.languages?.[0] ?? "");
@@ -1360,11 +1355,6 @@ export async function pruneUnavailableUI(
     }
   }
 
-  if (pairedInRaw.size) {
-    try {
-      neutralizeUnpairedPlaceholders(doc.documentElement, pairedInRaw);
-    } catch { /* best-effort */ }
-  }
 
   return doc.documentElement.outerHTML;
 }
