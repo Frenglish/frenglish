@@ -1175,6 +1175,7 @@ export async function pruneUnavailableUI(
   const doc = await createDocument(html);
   const baseUrl = opts.baseUrl || doc.baseURI || "https://example.local";
   const { exact, noloc } = buildPathIndex(configuration);
+  const pairedInRaw = PLACEHOLDER_TAG_RE.test(html) ? scanPairedPlaceholders(html) : new Set<string>();
 
   // derive language from the HTML, fall back to config
   const configuredOrigin = configuration.originLanguage || (configuration.languages?.[0] ?? "");
@@ -1209,11 +1210,10 @@ export async function pruneUnavailableUI(
   };
 
   const countVisibleSubmenuItems = (menuItemLi: Element): number => {
-    // count descendent <li> items that are not hidden/pruned
     const lis = Array.from(menuItemLi.querySelectorAll("li"));
     let count = 0;
     for (const li of lis) {
-      if (!li.querySelector("a[href]")) continue; // only rows with a link
+      if (!li.querySelector("a[href]")) continue;
       if (!isHiddenByUs(li)) count++;
     }
     return count;
@@ -1298,16 +1298,13 @@ export async function pruneUnavailableUI(
     const container = findRemovalContainer(a, opts.ancestorSelectors || []);
     const linksInside = container.querySelectorAll("a[href]");
 
-    // If this <a> is the top trigger of a dropdown, KEEP the dropdown visible.
-    // Neutralize the top link, then hide/remove only submenu items that point to the disallowed path.
     const isTopTrigger =
       container.classList.contains("menu-item-has-children") &&
       a.parentElement === container &&
       linksInside.length > 1;
 
     if (isTopTrigger) {
-      // Neutralize top anchor (keep visible so mega-menu mechanics remain)
-      const topA = a; // same reference as passed
+      const topA = a;
       topA.setAttribute(PRUNED_ATTR, "language-mismatch");
       topA.setAttribute(PRUNED_PATH_ATTR, pathname);
       topA.setAttribute("aria-disabled", "true");
@@ -1316,10 +1313,9 @@ export async function pruneUnavailableUI(
       (topA as HTMLElement).style.cursor = "default";
       topA.setAttribute("role", "button");
 
-      // Hide/remove only submenu items that match the disallowed path
       const submenuLinks = Array.from(container.querySelectorAll("a[href]")) as HTMLAnchorElement[];
       for (const subA of submenuLinks) {
-        if (subA === topA) continue; // skip the neutralized top link
+        if (subA === topA) continue;
         let subPath = "";
         try {
           const u2 = new URL(subA.getAttribute("href") || "", baseUrl);
@@ -1340,12 +1336,10 @@ export async function pruneUnavailableUI(
         }
       }
 
-      // After pruning matching submenu items, collapse ONLY if dropdown is now empty
       collapseIfDropdownEmpty(container);
       continue;
     }
 
-    // Non-top items: hide/remove the specific item (not the whole dropdown)
     const target = linksInside.length > 1 ? a : container;
     if (opts.strategy === "remove") {
       const parentDropdown = container.closest(".menu-item-has-children");
@@ -1364,6 +1358,12 @@ export async function pruneUnavailableUI(
       const parentDropdown = container.closest(".menu-item-has-children");
       if (parentDropdown) collapseIfDropdownEmpty(parentDropdown);
     }
+  }
+
+  if (pairedInRaw.size) {
+    try {
+      neutralizeUnpairedPlaceholders(doc.documentElement, pairedInRaw);
+    } catch { /* best-effort */ }
   }
 
   return doc.documentElement.outerHTML;
