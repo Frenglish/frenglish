@@ -1,6 +1,6 @@
 {
     "name": "@frenglish/utils",
-    "version": "1.0.31",
+    "version": "1.0.32",
     "description": "Utils for Frenglish translation service",
     "type": "module",
     "main": "dist/index.js",
@@ -36,7 +36,6 @@
         "@types/jsdom": "^21.1.6",
         "@types/minimatch": "^5.1.2",
         "@types/node": "^22.5.4",
-        "happy-dom": "^16.8.1",
         "jest": "^27.0.0",
         "ts-jest": "^27.0.0",
         "typescript": "^5.8.2"
