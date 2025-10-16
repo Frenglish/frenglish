@@ -299,14 +299,27 @@ export async function getTranslationContent(translationId: number, apiKey: strin
  * - null if either map does not exist for the project.
  * @throws If the API request fails.
  */
-export async function getTextAndStyleMap(apiKey: string, requestedLang?: string): Promise<{ content: TextAndStyleMapResponse } | null> {
-  return apiRequest<{ content: TextAndStyleMapResponse } | null>('/api/project/request-text-and-style-map', {
-    body: {
-      apiKey,
-      requestedLang
-    },
-    errorContext: 'Failed to fetch project text and style maps',
-  });
+export async function getTextAndStyleMap(
+  apiKey: string,
+  requestedLang?: string,
+  hashesOrOpts?: string[] | { hashes?: string[]; baseUrl?: string }
+): Promise<{ content: TextAndStyleMapResponse } | null> {
+  const opts = Array.isArray(hashesOrOpts)
+    ? { hashes: hashesOrOpts }
+    : (hashesOrOpts || {});
+
+  return apiRequest<{ content: TextAndStyleMapResponse } | null>(
+    '/api/project/request-text-and-style-map',
+    {
+      body: {
+        apiKey,
+        requestedLang,
+        ...(opts.hashes?.length ? { hashes: opts.hashes } : {}),
+        ...(opts.baseUrl ? { baseUrl: opts.baseUrl } : {}),
+      },
+      errorContext: 'Failed to fetch project text and style maps',
+    }
+  );
 }
 
 /**
