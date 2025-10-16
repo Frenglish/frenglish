@@ -140,7 +140,7 @@ export interface FrenglishSDK {
    * @returns Text map and style mapcontent if exists, null otherwise
    * @throws {Error} If text map retrieval fails
    */
-  getTextAndStyleMap(requestedLang?: string): Promise<{ content: TextAndStyleMapResponse } | null>;
+  getTextAndStyleMap(requestedLang?: string, hashesOrOpts?: string[] | { hashes?: string[]; baseUrl?: string }): Promise<{ content: TextAndStyleMapResponse } | null>;
 
   /**
    * Retrieves the project's text map, which contains mappings of text content.
@@ -358,8 +358,8 @@ export function FrenglishSDK(apiKey: string): FrenglishSDK {
       return getTranslatedFileUtil(apiKey, requestedLang, content, fileId)
     },
 
-    getTextAndStyleMap: async (requestedLang) => {
-      return getTextAndStyleMapUtil(apiKey, requestedLang)
+    getTextAndStyleMap: async (requestedLang, hashesOrOpts) => {
+      return getTextAndStyleMapUtil(apiKey, requestedLang, hashesOrOpts)
     },
 
     getDefaultConfiguration: async () => {

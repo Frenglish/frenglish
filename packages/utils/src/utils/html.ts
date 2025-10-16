@@ -1160,7 +1160,7 @@ const localeMatchesConditional = (
 export async function pruneUnavailableUI(
   html: string,
   configuration: Configuration,
-  opts: { strategy?: "remove" | "hide"; ancestorSelectors?: string[]; baseUrl?: string, lang?: string } = {}
+  opts: { ancestorSelectors?: string[]; baseUrl?: string; lang?: string } = {}
 ): Promise<string> {
   const entries = configuration?.languageAvailability?.entries || [];
   if (!html || !entries.length) return html;
@@ -1172,109 +1172,42 @@ export async function pruneUnavailableUI(
   const baseUrl = opts.baseUrl || doc.baseURI || "https://example.local";
   const { exact, noloc } = buildPathIndex(configuration);
 
-  // derive language from the HTML, fall back to config
+  // language: explicit > detected > configured default
   const configuredOrigin = configuration.originLanguage || (configuration.languages?.[0] ?? "");
   const lang =
     (opts.lang && String(opts.lang).toLowerCase()) ||
     detectLanguageFromHtml(doc, configuredOrigin);
   const allLocales = configuration?.languages ?? [];
 
-  const removeOurDisplayNone = (el: Element) => {
+  // idempotent hider
+  const hide = (el: Element, path: string) => {
     const style = el.getAttribute("style") || "";
-    const newStyle = style
-      .replace(/(?:^|;)\s*display\s*:\s*none\s*!important\s*;?/i, ";")
-      .replace(/;;+/g, ";")
-      .replace(/^\s*;\s*|\s*;\s*$/g, "");
-    if (newStyle) el.setAttribute("style", newStyle);
-    else el.removeAttribute("style");
-  };
-
-  const addOurDisplayNone = (el: Element) => {
-    const style = el.getAttribute("style") || "";
-    if (/display\s*:\s*none\s*!important/i.test(style)) return;
-    el.setAttribute(
-      "style",
-      (style ? style.replace(/\s*;?\s*$/, "; ") : "") + "display:none !important;"
-    );
-  };
-
-  const isHiddenByUs = (el: Element) => {
-    if (el.getAttribute(PRUNED_ATTR) === "language-mismatch") return true;
-    const style = el.getAttribute("style") || "";
-    return /display\s*:\s*none\s*!important/i.test(style);
-  };
-
-  const countVisibleSubmenuItems = (menuItemLi: Element): number => {
-    const lis = Array.from(menuItemLi.querySelectorAll("li"));
-    let count = 0;
-    for (const li of lis) {
-      if (!li.querySelector("a[href]")) continue;
-      if (!isHiddenByUs(li)) count++;
+    if (!/display\s*:\s*none\s*!important/i.test(style)) {
+      el.setAttribute(
+        "style",
+        (style ? style.replace(/\s*;?\s*$/, "; ") : "") + "display:none !important;"
+      );
     }
-    return count;
+    el.setAttribute(PRUNED_ATTR, "language-mismatch");
+    if (!el.hasAttribute(PRUNED_PATH_ATTR)) el.setAttribute(PRUNED_PATH_ATTR, path);
+
+    // make any link inside unfocusable to screen readers/keyboard
+    const link =
+      el.tagName.toLowerCase() === "a"
+        ? (el as HTMLElement)
+        : (el.querySelector("a[href]") as HTMLElement | null);
+    if (link && !link.hasAttribute("tabindex")) link.setAttribute("tabindex", "-1");
   };
 
-  const collapseIfDropdownEmpty = (menuItemLi: Element) => {
-    if (!menuItemLi.classList.contains("menu-item-has-children")) return;
-    const remaining = countVisibleSubmenuItems(menuItemLi);
-    if (remaining > 0) return;
-    if (opts.strategy === "remove") {
-      menuItemLi.remove();
-    } else {
-      addOurDisplayNone(menuItemLi);
-      menuItemLi.setAttribute(PRUNED_ATTR, "language-mismatch");
-      if (!menuItemLi.getAttribute(PRUNED_PATH_ATTR)) {
-        menuItemLi.setAttribute(PRUNED_PATH_ATTR, "(empty-dropdown)");
-      }
-      const topA = menuItemLi.querySelector(":scope > a");
-      if (topA && !topA.hasAttribute("tabindex"))
-        (topA as HTMLElement).setAttribute("tabindex", "-1");
-    }
-  };
-
-  // Phase 1: reveal previously hidden (if rules changed)
-  {
-    const previouslyHidden = Array.from(
-      doc.querySelectorAll(`[${PRUNED_ATTR}="language-mismatch"]`)
-    ) as Element[];
-    for (const el of previouslyHidden) {
-      const raw = el.getAttribute(PRUNED_PATH_ATTR) || "";
-      const path = normalizePath(raw);
-      const enabled = lookupEnabledLocalesForHref(path, configuration, exact, noloc);
-      if (!enabled) {
-        removeOurDisplayNone(el);
-        el.removeAttribute(PRUNED_ATTR);
-        el.removeAttribute(PRUNED_PATH_ATTR);
-        el.querySelectorAll('a[tabindex="-1"]').forEach((a) =>
-          (a as HTMLElement).removeAttribute("tabindex")
-        );
-        continue;
-      }
-      const { allowBase } = shouldAllowBaseLangPrefixWithReason(lang, allLocales, enabled);
-      const allowed = localeMatchesConditional(lang, enabled, allowBase);
-      if (allowed) {
-        removeOurDisplayNone(el);
-        el.removeAttribute(PRUNED_ATTR);
-        el.removeAttribute(PRUNED_PATH_ATTR);
-        el.querySelectorAll('a[tabindex="-1"]').forEach((a) =>
-          (a as HTMLElement).removeAttribute("tabindex")
-        );
-        el.querySelectorAll(`[${PRUNED_ATTR}="language-mismatch"]`).forEach((child) => {
-          removeOurDisplayNone(child as Element);
-          child.removeAttribute(PRUNED_ATTR);
-          child.removeAttribute(PRUNED_PATH_ATTR);
-        });
-      }
-    }
-  }
-
-  // Phase 2: scan anchors and prune disallowed ones
+  // Iterate anchors once; hide either the anchor or its matched ancestor
   const anchors = Array.from(doc.querySelectorAll("a[href]")) as HTMLAnchorElement[];
+  const seen = new Set<Element>(); // avoid re-hiding the same container repeatedly
 
   for (const a of anchors) {
     const rawHref = a.getAttribute("href") || "";
     if (!rawHref || /^(mailto:|tel:|javascript:)/i.test(rawHref)) continue;
 
+    // Resolve and normalize pathname
     let pathname = "";
     try {
       const u = new URL(rawHref, baseUrl);
@@ -1283,78 +1216,23 @@ export async function pruneUnavailableUI(
       pathname = normalizePath(rawHref);
     }
 
+    // Get availability for this path; if none, skip
     const enabled = lookupEnabledLocalesForHref(pathname, configuration, exact, noloc);
     if (!enabled) continue;
 
+    // Check if current lang is allowed for this path
     const { allowBase } = shouldAllowBaseLangPrefixWithReason(lang, allLocales, enabled);
     const allowed = localeMatchesConditional(lang, enabled, allowBase);
     if (allowed) continue;
 
+    // Hide the chosen ancestor (or the anchor itself)
     const container = findRemovalContainer(a, opts.ancestorSelectors || []);
-    const linksInside = container.querySelectorAll("a[href]");
-
-    const isTopTrigger =
-      container.classList.contains("menu-item-has-children") &&
-      a.parentElement === container &&
-      linksInside.length > 1;
-
-    if (isTopTrigger) {
-      const topA = a;
-      topA.setAttribute(PRUNED_ATTR, "language-mismatch");
-      topA.setAttribute(PRUNED_PATH_ATTR, pathname);
-      topA.setAttribute("aria-disabled", "true");
-      topA.setAttribute("tabindex", "0");
-      topA.removeAttribute("href");
-      (topA as HTMLElement).style.cursor = "default";
-      topA.setAttribute("role", "button");
-
-      const submenuLinks = Array.from(container.querySelectorAll("a[href]")) as HTMLAnchorElement[];
-      for (const subA of submenuLinks) {
-        if (subA === topA) continue;
-        let subPath = "";
-        try {
-          const u2 = new URL(subA.getAttribute("href") || "", baseUrl);
-          subPath = normalizePath(u2.pathname);
-        } catch {
-          subPath = normalizePath(subA.getAttribute("href") || "");
-        }
-        if (subPath === pathname) {
-          const subLi = findRemovalContainer(subA, opts.ancestorSelectors || []);
-          if (opts.strategy === "remove") {
-            subLi.remove();
-          } else {
-            addOurDisplayNone(subLi);
-            subLi.setAttribute(PRUNED_ATTR, "language-mismatch");
-            subLi.setAttribute(PRUNED_PATH_ATTR, subPath);
-            if (!subA.hasAttribute("tabindex")) subA.setAttribute("tabindex", "-1");
-          }
-        }
-      }
-
-      collapseIfDropdownEmpty(container);
-      continue;
-    }
-
-    const target = linksInside.length > 1 ? a : container;
-    if (opts.strategy === "remove") {
-      const parentDropdown = container.closest(".menu-item-has-children");
-      target.remove();
-      if (parentDropdown) collapseIfDropdownEmpty(parentDropdown);
-    } else {
-      addOurDisplayNone(target);
-      target.setAttribute(PRUNED_ATTR, "language-mismatch");
-      target.setAttribute(PRUNED_PATH_ATTR, pathname);
-      const link =
-        target.tagName.toLowerCase() === "a"
-          ? (target as HTMLElement)
-          : ((target.querySelector("a") as HTMLElement | null) ?? null);
-      if (link && !link.hasAttribute("tabindex")) link.setAttribute("tabindex", "-1");
-
-      const parentDropdown = container.closest(".menu-item-has-children");
-      if (parentDropdown) collapseIfDropdownEmpty(parentDropdown);
+    const target = container ?? a;
+    if (!seen.has(target)) {
+      hide(target, pathname);
+      seen.add(target);
     }
   }
-
 
   return doc.documentElement.outerHTML;
 }
