@@ -4784,7 +4784,6 @@ packages:
       '@types/node': ^18.0.0 || ^20.0.0 || >=22.0.0
       '@vitest/browser': 3.1.1
       '@vitest/ui': 3.1.1
-      happy-dom: '*'
       jsdom: '*'
     peerDependenciesMeta:
       '@edge-runtime/vm':
@@ -4796,8 +4795,6 @@ packages:
       '@vitest/browser':
         optional: true
       '@vitest/ui':
-        optional: true
-      happy-dom:
         optional: true
       jsdom:
         optional: true
