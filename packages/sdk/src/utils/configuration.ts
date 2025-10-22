@@ -12,10 +12,9 @@ import { apiRequest } from './api.js'
  * @throws If the request fails or the API responds with an error.
  */
 export async function getDefaultConfiguration(apiKey: string): Promise<Configuration> {
-  return apiRequest<Configuration>('/api/configuration/get-default-configuration', {
-    body: {
-      apiKey,
-    },
+  return apiRequest<Configuration>('/api/configuration/default', {
+    method: 'GET',
+    apiKey,
     errorContext: 'Failed to get default configuration',
   })
 }
@@ -28,11 +27,15 @@ export async function getDefaultConfiguration(apiKey: string): Promise<Configura
  *   - originLanguage: The project's source language code (e.g. 'en')
  * @throws If the request fails or the API responds with an error.
  */
-export async function getProjectSupportedLanguages(apiKey: string): Promise<{ languages: string[]; originLanguage: string }> {
-  return apiRequest<{ languages: string[]; originLanguage: string }>('/api/configuration/get-project-supported-languages', {
-    body: {
+export async function getProjectSupportedLanguages(
+  apiKey: string
+): Promise<{ languages: string[]; originLanguage: string }> {
+  return apiRequest<{ languages: string[]; originLanguage: string }>(
+    '/api/configuration/supported-languages',
+    {
+      method: 'GET',
       apiKey,
-    },
-    errorContext: 'Failed to get project supported languages',
-  })
+      errorContext: 'Failed to get project supported languages',
+    }
+  )
 }
