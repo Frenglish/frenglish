@@ -2,7 +2,7 @@
 // Constants
 // ---------------------------------------------------------------------------
 import pkg from 'crypto-js'
-import type { JSDOM as JSDOMType,  VirtualConsole as VirtualConsoleType } from 'jsdom'
+import type { JSDOM as JSDOMType, VirtualConsole as VirtualConsoleType } from 'jsdom'
 import { extractTextComponents } from './utils.js'
 import { CompressionResult, ExtractionResult, MasterStyleMap, OriginalTagInfo } from '../types/html.js'
 import { Configuration } from '../types/configuration.js'
@@ -152,7 +152,7 @@ async function upsertPlaceholder(raw: string | undefined | null, maps: TextMaps,
   } else {
     compressedMiddleTextString = unescapeHtml(middleText)
   }
-  
+
   const PH_TAG_RE = /<(\/?)(sty|href|excl)(\d+)([^>]*)>/gi;
   compressedMiddleTextString = compressedMiddleTextString.replace(
     PH_TAG_RE,
@@ -170,7 +170,7 @@ async function upsertPlaceholder(raw: string | undefined | null, maps: TextMaps,
   if (!hash) {
     hash = generatePlaceholder(compressedMiddleTextString)
     maps.forward[hash] = compressedMiddleTextString
-    maps.reverse[compressedMiddleTextString] = hash
+    maps.reverse[canonKey] = hash
   }
   return {
     hash,
@@ -253,11 +253,6 @@ async function processAttributes(
   const tag = el.tagName.toLowerCase()
   const mutate = !!inject; // ← single switch controlling visible writes
 
-  // <title> is handled via the text-node path; skip here.
-  if (tag === 'title') {
-    return
-  }
-
   // Generic attribute handling
   for (const attr of TRANSLATABLE_ATTRIBUTES) {
     if (el.hasAttribute(`${FRENGLISH_DATA_KEY}-${attr}`)) continue
@@ -269,8 +264,10 @@ async function processAttributes(
       el.setAttribute(`${FRENGLISH_DATA_KEY}-${attr}`, rep.hash)
     }
     // Only replace visible value when we're injecting placeholders
+    // Only replace visible value when we're injecting placeholders
     if (mutate) {
       el.setAttribute(attr, rep.newText)
+      if (currentLanguage) el.setAttribute('translated-lang', currentLanguage) // ← add this line
     }
   }
 
@@ -279,19 +276,29 @@ async function processAttributes(
   const type = el.getAttribute('type')?.toLowerCase() ?? ''
   if (
     valAttr &&
-    (tag === 'button' || tag === 'option' || (tag === 'input' && ['button', 'submit', 'reset'].includes(type)))
+    (tag === 'button' || tag === 'option' ||
+      (tag === 'input' && ['button', 'submit', 'reset'].includes(type)))
   ) {
     const rep = await upsertPlaceholder(valAttr, maps, inject, config, compress, masterStyleMap)
     if (rep) {
       if (injectDataKey) el.setAttribute(`${FRENGLISH_DATA_KEY}-value`, rep.hash)
-      if (mutate) el.setAttribute('value', rep.newText)
+      if (mutate) {
+        el.setAttribute('value', rep.newText)
+        if (currentLanguage) el.setAttribute('translated-lang', currentLanguage) // ← add this
+      }
     }
   }
 
   // <meta name|property|itemprop=... content="...">
   if (tag === 'meta') {
+    // If we've already processed this meta tag, skip
+    if (el.hasAttribute(`${FRENGLISH_DATA_KEY}-content`)) return;
+
     const content = el.getAttribute('content') || '';
     if (!content.trim()) return;
+
+    // If content already looks like a placeholder hash, skip
+    if (/^[a-f0-9]{64}$/i.test(content)) return;
 
     // Which key field is used on this tag?
     const rawKey =
@@ -301,7 +308,7 @@ async function processAttributes(
       '';
     const metaKey = rawKey.toLowerCase().trim();
 
-    const explicitSkip  = el.getAttribute('data-frenglish-skip')  === 'content';
+    const explicitSkip = el.getAttribute('data-frenglish-skip') === 'content';
     const explicitForce = el.getAttribute('data-frenglish-force') === 'content';
     if (explicitSkip) return;
 
@@ -309,11 +316,11 @@ async function processAttributes(
     const HARD_BLACKLIST_RE =
       /(?:^|:)(?:published_time|modified_time|updated_time|article:published_time|article:modified_time|date|datetime|release_date|expiry|expiration|url|image(?::(?:secure_url|url|width|height|type))?|video|audio|locale|site_name|site|app(?:[_:-]?id)?|id|token|verification|verify|robots|viewport|charset|theme-?color|color-?scheme|referrer|generator|format-detection|twitter:card|twitter:site|twitter:label1|twitter:data1|og:type)\b/;
 
-    const looksLikeUrl   = /^(?:https?:)?\/\//i.test(content) || /^(?:mailto:|tel:|data:)/i.test(content) || content.startsWith('/');
+    const looksLikeUrl = /^(?:https?:)?\/\//i.test(content) || /^(?:mailto:|tel:|data:)/i.test(content) || content.startsWith('/');
     const looksLikeEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(content);
     const looksLikeHexId = /^[0-9a-f]{16,}$/i.test(content);
-    const looksLikeDate  = /^\d{4}-\d{2}-\d{2}(?:[ tT]\d{2}:\d{2}(?::\d{2})?(?:Z|[+-]\d{2}:?\d{2})?)?$/.test(content);
-    const looksLikeJSON  = /^[\[\{].*[\]\}]$/.test(content);
+    const looksLikeDate = /^\d{4}-\d{2}-\d{2}(?:[ tT]\d{2}:\d{2}(?::\d{2})?(?:Z|[+-]\d{2}:?\d{2})?)?$/.test(content);
+    const looksLikeJSON = /^[\[\{].*[\]\}]$/.test(content);
 
     const hardBlocked = HARD_BLACKLIST_RE.test(metaKey) || looksLikeUrl || looksLikeEmail || looksLikeHexId || looksLikeDate || looksLikeJSON;
 
@@ -333,28 +340,15 @@ async function processAttributes(
     const rep = await upsertPlaceholder(content, maps, inject, config, compress, masterStyleMap)
     if (rep) {
       if (injectDataKey) {
-        el.setAttribute(FRENGLISH_DATA_KEY, rep.hash)
-        el.setAttribute('data-frenglish-attr', 'content')
+        el.setAttribute(`${FRENGLISH_DATA_KEY}-content`, rep.hash);
+        el.setAttribute('data-frenglish-attr', 'content');
       }
       if (mutate) {
-        el.setAttribute('content', rep.newText);
+        el.setAttribute('content', rep.newText)
+        if (currentLanguage) el.setAttribute('translated-lang', currentLanguage) // ← add this
       }
     }
     return
-  }
-
-  // Tag the element with current language for debugging/queries (existing behavior)
-  if (currentLanguage) {
-    el.setAttribute('translated-lang', currentLanguage)
-  }
-
-  // (Unreachable before due to early return, left here for parity – kept as-is)
-  if (tag === 'title' && !el.hasAttribute(FRENGLISH_DATA_KEY)) {
-    const rep = await upsertPlaceholder(el.textContent, maps, inject, config, compress, masterStyleMap)
-    if (rep) {
-      if (injectDataKey) el.setAttribute(FRENGLISH_DATA_KEY, rep.hash)
-      if (mutate) el.textContent = rep.newText
-    }
   }
 }
 
@@ -428,7 +422,7 @@ export async function extractStrings(
               await processDataValue(json.props, maps, injectPlaceholders, config, compress, masterStyleMap)
               if (mutate) el.textContent = JSON.stringify(json)
             }
-          } catch {}
+          } catch { }
         }
         return
       }
@@ -462,14 +456,14 @@ export async function extractStrings(
           if (injectDataKey) el.setAttribute(FRENGLISH_DATA_KEY, rep.hash)
 
           if (mutate) {
-            // This is the only branch that writes HTML; do it, then neutralize any unpaired <styN> etc inside.
             el.innerHTML = rep.newText
+            if (currentLanguage) el.setAttribute('translated-lang', currentLanguage) // ← add this
             try {
               if (PLACEHOLDER_TAG_RE.test(rep.newText)) {
                 const localPaired = scanPairedPlaceholders(rep.newText)
                 neutralizeUnpairedPlaceholders(el, localPaired)
               }
-            } catch { /* best-effort */ }
+            } catch { }
           }
 
           await processAttributes(el, maps, injectPlaceholders, config, compress, injectDataKey, masterStyleMap, currentLanguage)
@@ -497,7 +491,10 @@ export async function extractStrings(
         const rep = await upsertPlaceholder(raw, maps, injectPlaceholders, config, compress, masterStyleMap)
         if (rep) {
           if (injectDataKey) parent.setAttribute(FRENGLISH_DATA_KEY, rep.hash)
-          if (mutate) (node as Text).textContent = rep.newText // safe: remains a TEXT node
+          if (mutate) {
+            (node as Text).textContent = rep.newText
+            if (currentLanguage) parent.setAttribute('translated-lang', currentLanguage) // ← add this
+          }
         }
         return
       }
@@ -540,13 +537,13 @@ export async function extractStrings(
 
 async function getCompressedInLineWithStyleMap(
   htmlChunk: string,
-  config:   Configuration,
-  map:      MasterStyleMap
+  config: Configuration,
+  map: MasterStyleMap
 ): Promise<string> {
   const { compressed, styleMap, hrefMap } =
-          await compressInlineStyling(htmlChunk, config)
+    await compressInlineStyling(htmlChunk, config)
   const hash = generatePlaceholder(compressed)
-  map[hash]  = { styleMap, hrefMap }
+  map[hash] = { styleMap, hrefMap }
   return compressed
 }
 
@@ -604,7 +601,7 @@ export function decompressHTML(
 
   // Updated RE to match generic placeholders like <sty0>, <href0>, <excl0>
   const RE = /<((?:sty|href|excl)\d+)([^>]*)>(?:([\s\S]*?)<\/\1>)?/gi
-  const SELF = ['input','img','br','hr','meta','link','wbr','area','base','col','embed','param','source','track']
+  const SELF = ['input', 'img', 'br', 'hr', 'meta', 'link', 'wbr', 'area', 'base', 'col', 'embed', 'param', 'source', 'track']
 
   out = out.replace(RE, (m, phTag: string, newAttrs: string = '', content?: string) => {
     const info = styleMap[phTag.toLowerCase()]
@@ -750,7 +747,7 @@ function compressHTML(
         const el = n as Element
         const tagName = el.tagName.toLowerCase()
 
-        if (tagName === 'br' || tagName === 'hr' || tagName === 'wbr' || tagName === 'area' || tagName === 'base' || tagName ==='col'
+        if (tagName === 'br' || tagName === 'hr' || tagName === 'wbr' || tagName === 'area' || tagName === 'base' || tagName === 'col'
           || tagName === 'embed' || tagName === 'param' || tagName === 'source' || tagName === 'track') {
           const ph = `sty${counter++}`
           styleMap[ph] = {
@@ -922,7 +919,7 @@ function isCompressibleInlineElement(el: Element): boolean {
   const tag = el.tagName.toLowerCase()
   return new Set([
     'span', 'strong', 'em', 'i', 'b', 'u', 'sub', 'sup', 'mark', 'small', 'font', 'code',
-    'abbr','cite','bdi','bdo','del','ins','kbd','q','samp','var'
+    'abbr', 'cite', 'bdi', 'bdo', 'del', 'ins', 'kbd', 'q', 'samp', 'var'
   ]).has(tag)
 }
 
@@ -958,15 +955,15 @@ function escapeAttribute(v: string): string {
  * The order of replacement is important: &amp; must be first.
  */
 function unescapeHtml(v: string): string {
-    if (!v) return '';
-    return v
-        .replace(/&amp;/g, '&')
-        .replace(/&lt;/g, '<')
-        .replace(/&gt;/g, '>')
-        .replace(/&quot;/g, '"')
-        .replace(/&#39;/g, "'")
-        .replace(/&apos;/g, "'")
-        .replace(/&nbsp;/g, ' ');
+  if (!v) return '';
+  return v
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/&nbsp;/g, ' ');
 }
 
 // ----------------------------------------------------------------------------
