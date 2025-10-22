@@ -85,6 +85,10 @@ export interface FrenglishSDK {
    * @param filenames - Optional array of filenames corresponding to content
    * @param partialConfig - Optional configuration overrides
    * @param paths - Optional path specification of urls
+   * @param {Object} [opts={}] - Additional options for the translation request.
+   * @param {boolean} [opts.wait=true] - When true (default), wait and poll until the translation completes
+   *   and return the translated content. When false, fire-and-forget: queue the translation and return
+   *   immediately with an empty `content` array.
    * @returns Translation ID and content if successful
    * @throws {Error} If translation is cancelled or request fails
    *
@@ -95,7 +99,7 @@ export interface FrenglishSDK {
    *   ['hello.json', 'welcome.html']
    * );
    */
-  translate(content: string[], isFullTranslation?: boolean, filenames?: string[], partialConfig?: PartialConfiguration, paths?: string[]): Promise<{ translationId: number, content: TranslationResponse[] }>;
+  translate(content: string[], isFullTranslation?: boolean, filenames?: string[], partialConfig?: PartialConfiguration, paths?: string[], opts?: { wait?: boolean }): Promise<{ translationId: number, content: TranslationResponse[] }>;
 
   /**
    * Translates a single string to a specified target language.

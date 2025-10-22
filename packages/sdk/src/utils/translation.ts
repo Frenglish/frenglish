@@ -142,6 +142,10 @@ export const pollForTranslation = async (
  * @param {string[]} [filenames=[]] - Filenames associated with the content.
  * @param {PartialConfiguration} [partialConfig={}] - Partial configuration to override default settings.
  * @param {string[]} [paths=[]] - Optional: Paths to specify the urls they're coming from
+ * @param {Object} [opts={}] - Additional options for the translation request.
+ * @param {boolean} [opts.wait=true] - When true (default), wait and poll until the translation completes
+ *   and return the translated content. When false, fire-and-forget: queue the translation and return
+ *   immediately with an empty `content` array.
  * @returns {Promise<CompletedTranslationResponse>} A promise that resolves to RequestTranslationResponse with translationId and content
  * @throws {Error} If the request fails, translation is cancelled, or polling times out
  */
@@ -151,37 +155,36 @@ export async function translate(
   isFullTranslation = false,
   filenames: string[] = [],
   partialConfig: PartialConfiguration = {},
-  paths: string[] = []
+  paths: string[] = [],
+  opts: { wait?: boolean } = {}
 ): Promise<CompletedTranslationResponse> {
+  const { wait = true } = opts; 
   const parsedConfig = await parsePartialConfig(partialConfig)
 
   const data = await apiRequest<RequestTranslationResponse>('/api/translation/request-translation', {
-    body: {
-      content,
-      isFullTranslation,
-      filenames,
-      partialConfig: parsedConfig,
-      apiKey,
-      paths,
-    },
+    body: { content, isFullTranslation, filenames, partialConfig: parsedConfig, apiKey, paths },
     errorContext: 'Failed to request translation',
   })
 
-  // If we are translating a specific language, we make sure other languages are transalted too in subsequent call
+  // Fire a follow-up request for “other languages”
   if (parsedConfig && parsedConfig.languages && parsedConfig?.languages?.length > 0) {
     const { languages: _ignored, ...languageLessConfig } = parsedConfig ?? {};
-
     apiRequest<RequestTranslationResponse>('/api/translation/request-translation', {
       body: {
         content,
         isFullTranslation,
         filenames,
-        partialConfig: languageLessConfig, // translate all other languages too
+        partialConfig: languageLessConfig,
         apiKey,
         paths,
       },
       errorContext: 'Failed to request translation',
     })
+  }
+
+  // fire-and-forget usage
+  if (!wait) {
+    return { translationId: data.translationId, content: [] }
   }
 
   const translationContent = await pollForTranslation(data.translationId, apiKey)
