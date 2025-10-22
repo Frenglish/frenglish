@@ -1,6 +1,6 @@
 {
     "name": "@frenglish/sdk",
-    "version": "1.0.35",
+    "version": "1.0.36",
     "description": "SDK for Frenglish translation service",
     "type": "module",
     "main": "dist/index.js",

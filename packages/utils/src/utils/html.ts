@@ -87,6 +87,25 @@ export const PLACEHOLDER_TAG_RE = /<(?:sty|href|excl)\d+\b[^>]*>/i;
 // match tag‑names like "sty0", "href12", "excl3"
 const PLACEHOLDER_TAGNAME_RE = /^(?:sty|href|excl)\d+$/i
 
+function matchesExcludedByConfig(el: Element, config: Configuration): boolean {
+  const list = (config as any)?.excludedTranslationBlocks || [];
+  // Accept both shapes:
+  // 1) [{ selector: string, ...}, ...]
+  // 2) [{ blocks: [{ selector: string }, ...] }, ...]
+  for (const g of list) {
+    if (g?.selector && el.matches?.(g.selector)) return true;
+    if (Array.isArray(g?.blocks)) {
+      for (const b of g.blocks) {
+        if (b?.selector && el.matches?.(b.selector)) return true;
+      }
+    }
+  }
+  // Also allow the legacy class name used elsewhere
+  if (el.matches?.('.no-translate')) return true;
+  return false;
+}
+
+
 export function canonicalizeForHash(s: string): string {
   return String(s ?? '')
     .normalize('NFC')        // normalize combining marks
@@ -397,9 +416,11 @@ export async function extractStrings(
     while (current) {
       if (
         (current as HTMLElement).id === 'wpadminbar' ||
+        current.classList.contains('no-translate') ||
         current.classList.contains('no-translation') ||
         current.hasAttribute('data-no-translation') ||
-        current.getAttribute('translate') === 'no'
+        current.getAttribute('translate') === 'no' ||
+        matchesExcludedByConfig(current, config)
       ) {
         return true
       }

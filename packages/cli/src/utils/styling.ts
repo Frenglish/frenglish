@@ -1,19 +1,14 @@
-import figlet from 'figlet'
+import * as figlet from 'figlet'
 import chalk from 'chalk'
 
-/**
- * Print a colorful ASCII banner with optional file list below it.
- *
- * @param mainText - Main banner text (default: 'Frenglish')
- * @param subtitle - Subtitle below banner (default: translation slogan)
- * @param files - Optional array of file paths to log below the banner
- * @param font - Figlet font (default: 'Standard')
- */
+type FigletOptions = Parameters<typeof figlet.textSync>[1]
+type FigletFont = FigletOptions extends { font?: infer F } ? F : string
+
 export function printFrenglishBanner(
   mainText: string = 'Frenglish.ai',
   subtitle: string = '🌍 TRANSLATE - Localized. Simplified.',
   files: string[] = [],
-  font: figlet.Fonts = 'Standard'
+  font: FigletFont = 'Standard'
 ) {
   const bannerLines = figlet.textSync(mainText, {
     font,
