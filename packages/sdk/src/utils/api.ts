@@ -1,32 +1,54 @@
 import { FRENGLISH_BACKEND_URL } from '@frenglish/utils'
 
+type HttpMethod = 'GET' | 'POST'
+
 export async function apiRequest<T>(
   endpoint: string,
   options?: {
-    apiKey?: string;
-    accessToken?: string;
-    body?: any;
+    method?: HttpMethod;              // default: 'POST'
+    apiKey?: string;                  // public or private API key
+    accessToken?: string;             // JWT (still supported)
+    body?: any;                       // ignored for GET
     errorContext?: string;
     headers?: Record<string, string>;
   }
 ): Promise<T> {
-  const { apiKey, accessToken, body, errorContext, headers: customHeaders } = options || {}
+  const {
+    method = 'POST',
+    apiKey,
+    accessToken,
+    body,
+    errorContext,
+    headers: customHeaders,
+  } = options || {}
+
+  const hasBody = method !== 'GET' && body !== undefined
 
   const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    ...customHeaders
+    ...(hasBody ? { 'Content-Type': 'application/json' } : {}),
+    ...customHeaders,
   }
 
+  // Your server's authorize() checks public/private API keys in:
+  //   req.headers['x-api-key']  OR  req.body.apiKey
+  // So we must send x-api-key for both GET and POST.
   if (apiKey) {
-    headers['Authorization'] = `Bearer ${apiKey}`
-  } else if (accessToken) {
+    headers['x-api-key'] = apiKey
+  }
+
+  // If an accessToken is present, send it in Authorization.
+  // If there's no accessToken but there is an apiKey, we ALSO keep sending
+  // Authorization: Bearer <apiKey> for old endpoints that relied on it.
+  if (accessToken) {
     headers['Authorization'] = `Bearer ${accessToken}`
+  } else if (apiKey) {
+    headers['Authorization'] = `Bearer ${apiKey}`
   }
 
   const response = await fetch(`${FRENGLISH_BACKEND_URL}${endpoint}`, {
-    method: 'POST',
+    method,
     headers,
-    body: body ? JSON.stringify(body) : undefined,
+    body: hasBody ? JSON.stringify(body) : undefined,
   })
 
   const responseText = await response.text()
@@ -36,11 +58,10 @@ export async function apiRequest<T>(
     throw new Error(`${prefix}[${response.status}] ${responseText}`)
   }
 
+  if (!responseText) return undefined as unknown as T
   try {
-    const parsedResponse = JSON.parse(responseText)
-    return parsedResponse as T
-  } catch (error) {
-    console.error("Failed to parse response:", error)
+    return JSON.parse(responseText) as T
+  } catch {
     throw new Error(`Failed to parse response: ${responseText}`)
   }
 }
