@@ -338,8 +338,8 @@ export interface FrenglishSDK {
  */
 export function FrenglishSDK(apiKey: string): FrenglishSDK {
   return {
-    translate: async (content, isFullTranslation = false, filenames = [], partialConfig = {}, paths = []) => {
-      return translateUtil(content, apiKey, isFullTranslation, filenames, partialConfig, paths)
+    translate: async (content, isFullTranslation = false, filenames = [], partialConfig = {}, paths = [], opts: {}) => {
+      return translateUtil(content, apiKey, isFullTranslation, filenames, partialConfig, paths, opts)
     },
 
     translateString: async (content, lang, isFullTranslation, partialConfig = {}) => {
