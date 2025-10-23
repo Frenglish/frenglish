@@ -7,7 +7,8 @@ export interface IFrenglishSDK {
     isFullTranslation?: boolean,
     filenames?: string[],
     partialConfig?: PartialConfiguration,
-    paths?: string[]
+    paths?: string[],
+    otps?: { wait?: boolean }
   ): Promise<RequestTranslationResponse | undefined>;
 
   translateString(
