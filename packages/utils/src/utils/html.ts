@@ -134,6 +134,13 @@ function serializeOpenPlaceholderTag(el: Element) {
   return s
 }
 
+function stampTranslated(el: Element, currentLanguage?: string) {
+  if (!currentLanguage) return;
+  if (!el.hasAttribute('translated-lang')) {
+    el.setAttribute('translated-lang', currentLanguage);
+  }
+}
+
 // Turn *unpaired* placeholder elements (e.g., <sty0> with no </sty0> in the raw)
 // back into a TEXT node "<sty0>" followed by their children.
 // This prevents the parser from auto‑inserting "</sty0>".
@@ -279,14 +286,11 @@ async function processAttributes(
     if (!val?.trim()) continue
     const rep = await upsertPlaceholder(val, maps, inject, config, compress, masterStyleMap)
     if (!rep) continue
-    if (injectDataKey) {
-      el.setAttribute(`${FRENGLISH_DATA_KEY}-${attr}`, rep.hash)
-    }
-    // Only replace visible value when we're injecting placeholders
+    if (injectDataKey) el.setAttribute(`${FRENGLISH_DATA_KEY}-${attr}`, rep.hash)
     // Only replace visible value when we're injecting placeholders
     if (mutate) {
       el.setAttribute(attr, rep.newText)
-      if (currentLanguage) el.setAttribute('translated-lang', currentLanguage) // ← add this line
+      stampTranslated(el, currentLanguage);
     }
   }
 
@@ -303,7 +307,7 @@ async function processAttributes(
       if (injectDataKey) el.setAttribute(`${FRENGLISH_DATA_KEY}-value`, rep.hash)
       if (mutate) {
         el.setAttribute('value', rep.newText)
-        if (currentLanguage) el.setAttribute('translated-lang', currentLanguage) // ← add this
+        stampTranslated(el, currentLanguage);
       }
     }
   }
@@ -364,7 +368,7 @@ async function processAttributes(
       }
       if (mutate) {
         el.setAttribute('content', rep.newText)
-        if (currentLanguage) el.setAttribute('translated-lang', currentLanguage) // ← add this
+        stampTranslated(el, currentLanguage);
       }
     }
     return
@@ -475,10 +479,9 @@ export async function extractStrings(
         const rep = await upsertPlaceholder(el.innerHTML, maps, injectPlaceholders, config, compress, masterStyleMap)
         if (rep) {
           if (injectDataKey) el.setAttribute(FRENGLISH_DATA_KEY, rep.hash)
-
           if (mutate) {
             el.innerHTML = rep.newText
-            if (currentLanguage) el.setAttribute('translated-lang', currentLanguage) // ← add this
+            stampTranslated(el, currentLanguage);
             try {
               if (PLACEHOLDER_TAG_RE.test(rep.newText)) {
                 const localPaired = scanPairedPlaceholders(rep.newText)
@@ -514,7 +517,7 @@ export async function extractStrings(
           if (injectDataKey) parent.setAttribute(FRENGLISH_DATA_KEY, rep.hash)
           if (mutate) {
             (node as Text).textContent = rep.newText
-            if (currentLanguage) parent.setAttribute('translated-lang', currentLanguage) // ← add this
+            stampTranslated(parent, currentLanguage);
           }
         }
         return
@@ -535,6 +538,8 @@ export async function extractStrings(
         if (mutate) {
           const span = doc.createElement('span')
           if (injectDataKey) span.setAttribute(FRENGLISH_DATA_KEY, rep.hash)
+          stampTranslated(span, currentLanguage);
+          stampTranslated(parent, currentLanguage);
           span.textContent = rep.newText
           parent.replaceChild(span, node)
         } else {
