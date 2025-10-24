@@ -286,9 +286,7 @@ async function processAttributes(
     if (!val?.trim()) continue
     const rep = await upsertPlaceholder(val, maps, inject, config, compress, masterStyleMap)
     if (!rep) continue
-    if (injectDataKey) {
-      el.setAttribute(`${FRENGLISH_DATA_KEY}-${attr}`, rep.hash)
-    }
+    if (injectDataKey) el.setAttribute(`${FRENGLISH_DATA_KEY}-${attr}`, rep.hash)
     // Only replace visible value when we're injecting placeholders
     if (mutate) {
       el.setAttribute(attr, rep.newText)
@@ -306,9 +304,7 @@ async function processAttributes(
   ) {
     const rep = await upsertPlaceholder(valAttr, maps, inject, config, compress, masterStyleMap)
     if (rep) {
-      if (injectDataKey) {
-        el.setAttribute(`${FRENGLISH_DATA_KEY}-value`, rep.hash)
-      }
+      if (injectDataKey) el.setAttribute(`${FRENGLISH_DATA_KEY}-value`, rep.hash)
       if (mutate) {
         el.setAttribute('value', rep.newText)
         stampTranslated(el, currentLanguage);
@@ -482,10 +478,7 @@ export async function extractStrings(
       if (shouldCollapse(el)) {
         const rep = await upsertPlaceholder(el.innerHTML, maps, injectPlaceholders, config, compress, masterStyleMap)
         if (rep) {
-          if (injectDataKey) {
-            el.setAttribute(FRENGLISH_DATA_KEY, rep.hash)
-          }
-          
+          if (injectDataKey) el.setAttribute(FRENGLISH_DATA_KEY, rep.hash)
           if (mutate) {
             el.innerHTML = rep.newText
             stampTranslated(el, currentLanguage);
@@ -521,9 +514,7 @@ export async function extractStrings(
       if (pTag === 'title') {
         const rep = await upsertPlaceholder(raw, maps, injectPlaceholders, config, compress, masterStyleMap)
         if (rep) {
-          if (injectDataKey) {
-            parent.setAttribute(FRENGLISH_DATA_KEY, rep.hash)
-          }
+          if (injectDataKey) parent.setAttribute(FRENGLISH_DATA_KEY, rep.hash)
           if (mutate) {
             (node as Text).textContent = rep.newText
             stampTranslated(parent, currentLanguage);
@@ -553,9 +544,7 @@ export async function extractStrings(
           parent.replaceChild(span, node)
         } else {
           // No visible mutation: just tag the parent so applyTranslations can target it later.
-          if (injectDataKey) {
-            parent.setAttribute(FRENGLISH_DATA_KEY, rep.hash)
-          }
+          if (injectDataKey) parent.setAttribute(FRENGLISH_DATA_KEY, rep.hash)
         }
       }
     }
