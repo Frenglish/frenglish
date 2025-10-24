@@ -537,8 +537,8 @@ export async function extractStrings(
       if (rep) {
         if (mutate) {
           const span = doc.createElement('span')
-          span.setAttribute(FRENGLISH_DATA_KEY, rep.hash)
-          if (currentLanguage) span.setAttribute('translated-lang', currentLanguage)
+          if (injectDataKey) span.setAttribute(FRENGLISH_DATA_KEY, rep.hash)
+          stampTranslated(span, currentLanguage);
           stampTranslated(parent, currentLanguage);
           span.textContent = rep.newText
           parent.replaceChild(span, node)
