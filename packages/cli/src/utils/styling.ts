@@ -1,8 +1,13 @@
-import * as figlet from 'figlet'
-import chalk from 'chalk'
+import * as figletImport from 'figlet';
+import chalk from 'chalk';
 
-type FigletOptions = Parameters<typeof figlet.textSync>[1]
-type FigletFont = FigletOptions extends { font?: infer F } ? F : string
+// Normalize CommonJS vs ESM for figlet.
+const figlet = (
+  (figletImport as any).default ?? figletImport
+) as typeof figletImport;
+
+type FigletOptions = Parameters<typeof figlet.textSync>[1];
+type FigletFont = FigletOptions extends { font?: infer F } ? F : string;
 
 export function printFrenglishBanner(
   mainText: string = 'Frenglish.ai',
@@ -10,28 +15,37 @@ export function printFrenglishBanner(
   files: string[] = [],
   font: FigletFont = 'Standard'
 ) {
-  const bannerLines = figlet.textSync(mainText, {
-    font,
-    horizontalLayout: 'default',
-  }).split('\n')
+  const bannerLines: string[] = figlet
+    .textSync(mainText, {
+      font,
+      horizontalLayout: 'default',
+    })
+    .split('\n');
 
-  const colors = [chalk.magenta, chalk.cyan, chalk.blueBright, chalk.greenBright]
+  const colors = [
+    chalk.magenta,
+    chalk.cyan,
+    chalk.blueBright,
+    chalk.greenBright,
+  ];
 
-  console.log('\n')
-  bannerLines.forEach((line, i) => {
-    const color = colors[i % colors.length]
-    console.log(color(line))
-  })
+  console.log('\n');
+
+  bannerLines.forEach((line: string, i: number) => {
+    const color = colors[i % colors.length];
+    console.log(color(line));
+  });
 
   if (subtitle) {
-    console.log(chalk.yellowBright(`\n${subtitle}\n`))
+    console.log(chalk.yellowBright(`\n${subtitle}\n`));
   }
 
   if (files.length > 0) {
-    console.log(chalk.cyanBright(`📁 Files to translate (${files.length}):\n`))
-    files.forEach((file) => {
-      console.log('  ' + chalk.gray('•'), chalk.white(file))
-    })
-    console.log()
+    console.log(
+      chalk.cyanBright(`📁 Files to translate (${files.length}):\n`)
+    );
+    files.forEach((file: string) => {
+      console.log('  ' + chalk.gray('•'), chalk.white(file));
+    });
   }
 }
