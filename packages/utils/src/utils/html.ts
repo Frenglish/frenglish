@@ -250,10 +250,6 @@ export const shouldCollapse = (el: Element) => {
     }
   }
   const tag = el.tagName.toLowerCase();
-  if (tag === 'a') return false;
-  try {
-    if (el.querySelector && el.querySelector('a[href^="#"]')) return false;
-  } catch { /* :scope quirks or older DOMs — ignore */ }
 
   if (Array.from(el.classList).some(cls => cls.startsWith('col-') || cls.startsWith('wp-block-'))) {
     return false;
@@ -263,7 +259,7 @@ export const shouldCollapse = (el: Element) => {
   if (el.hasAttribute(FRENGLISH_DATA_KEY)) return false;
   if (el.querySelector(HEAVY_LEAF_SELECTOR)) return false;
   if (isAtomicContainer(el)) return false;
-  if (COLLAPSIBLE_SET.has(tag)) return !!el.textContent?.trim();
+  if (tag === 'a' || COLLAPSIBLE_SET.has(tag)) return !!el.textContent?.trim();
   return false;
 };
 
@@ -318,14 +314,12 @@ async function processAttributes(
 
   // <meta name|property|itemprop=... content="...">
   if (tag === 'meta') {
-    // If we've already processed this meta tag, skip
-    if (el.hasAttribute(`${FRENGLISH_DATA_KEY}-content`)) return;
+    const specificKeyAttr = `${FRENGLISH_DATA_KEY}-content`;
 
     const content = el.getAttribute('content') || '';
     if (!content.trim()) return;
 
-    // If content already looks like a placeholder hash, skip
-    if (/^[a-f0-9]{64}$/i.test(content)) return;
+    const isHash = /^[a-f0-9]{64}$/i.test(content);
 
     // Which key field is used on this tag?
     const rawKey =
@@ -335,7 +329,7 @@ async function processAttributes(
       '';
     const metaKey = rawKey.toLowerCase().trim();
 
-    const explicitSkip = el.getAttribute('data-frenglish-skip') === 'content';
+    const explicitSkip  = el.getAttribute('data-frenglish-skip')  === 'content';
     const explicitForce = el.getAttribute('data-frenglish-force') === 'content';
     if (explicitSkip) return;
 
@@ -343,37 +337,45 @@ async function processAttributes(
     const HARD_BLACKLIST_RE =
       /(?:^|:)(?:published_time|modified_time|updated_time|article:published_time|article:modified_time|date|datetime|release_date|expiry|expiration|url|image(?::(?:secure_url|url|width|height|type))?|video|audio|locale|site_name|site|app(?:[_:-]?id)?|id|token|verification|verify|robots|viewport|charset|theme-?color|color-?scheme|referrer|generator|format-detection|twitter:card|twitter:site|twitter:label1|twitter:data1|og:type)\b/;
 
-    const looksLikeUrl = /^(?:https?:)?\/\//i.test(content) || /^(?:mailto:|tel:|data:)/i.test(content) || content.startsWith('/');
+    const looksLikeUrl   = /^(?:https?:)?\/\//i.test(content) || /^(?:mailto:|tel:|data:)/i.test(content) || content.startsWith('/');
     const looksLikeEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(content);
     const looksLikeHexId = /^[0-9a-f]{16,}$/i.test(content);
-    const looksLikeDate = /^\d{4}-\d{2}-\d{2}(?:[ tT]\d{2}:\d{2}(?::\d{2})?(?:Z|[+-]\d{2}:?\d{2})?)?$/.test(content);
-    const looksLikeJSON = /^[\[\{].*[\]\}]$/.test(content);
+    const looksLikeDate  = /^\d{4}-\d{2}-\d{2}(?:[ tT]\d{2}:\d{2}(?::\d{2})?(?:Z|[+-]\d{2}:?\d{2})?)?$/.test(content);
+    const looksLikeJSON  = /^[\[\{].*[\]\}]$/.test(content);
 
-    const hardBlocked = HARD_BLACKLIST_RE.test(metaKey) || looksLikeUrl || looksLikeEmail || looksLikeHexId || looksLikeDate || looksLikeJSON;
+    const hardBlocked =
+      HARD_BLACKLIST_RE.test(metaKey) ||
+      looksLikeUrl || looksLikeEmail || looksLikeHexId || looksLikeDate || looksLikeJSON;
 
     const COPY_HINT_RE =
-      /(^|:)(title|description|keywords?|alt|caption|headline|application-name|apple-mobile-web-app-title)$/;
+      /(^|:)(title|description|keywords?|alt|caption|headline|application-name|apple-mobile-web-app-title|label1|data1)$/;
 
-    // Decide
     const allowByKey = COPY_HINT_RE.test(metaKey) || /:alt$/.test(metaKey);
     const shouldTranslate = explicitForce || (!hardBlocked && allowByKey);
+    if (!shouldTranslate) return;
 
-    if (!shouldTranslate) {
-      // Do NOT hash, do NOT tag, leave content as-is.
-      return;
+    // Build/Reuse placeholder
+    let hash: string;
+    let newText: string;
+
+    if (isHash) {
+      hash = content;
+      newText = content; // already placeholder
+    } else {
+      const rep = await upsertPlaceholder(content, maps, inject, config, compress, masterStyleMap);
+      if (!rep) return;
+      hash = rep.hash;
+      newText = rep.newText;
     }
 
-    // We translate: hash, tag, and optionally inject placeholder value
-    const rep = await upsertPlaceholder(content, maps, inject, config, compress, masterStyleMap)
-    if (rep) {
-      if (injectDataKey) {
-        el.setAttribute(`${FRENGLISH_DATA_KEY}-content`, rep.hash);
-        el.setAttribute('data-frenglish-attr', 'content');
-      }
-      if (mutate) {
-        el.setAttribute('content', rep.newText)
-        stampTranslated(el, currentLanguage);
-      }
+    if (injectDataKey) {
+      el.setAttribute(specificKeyAttr, hash);             // data-frenglish-key-content="..."
+      el.setAttribute('data-frenglish-attr', 'content');  // tells applier which attribute to set
+    }
+
+    if (mutate) {
+      el.setAttribute('content', newText);                // inject placeholder for apply step
+      stampTranslated(el, currentLanguage);
     }
     return
   }
@@ -475,16 +477,14 @@ export async function extractStrings(
       // or if we're mutating and have tagged it during this pass.
       const parentEl = (node as HTMLElement).parentElement
       if (parentEl && (originallyTagged.has(parentEl) || (mutate && parentEl.hasAttribute(FRENGLISH_DATA_KEY)))) {
-        if (tag !== 'a') {
-          return
-        }
+        return
       }
 
       // Collapse the whole block into a single placeholder/hash (for hashing & map building).
       if (shouldCollapse(el)) {
         const rep = await upsertPlaceholder(el.innerHTML, maps, injectPlaceholders, config, compress, masterStyleMap)
         if (rep) {
-          if (injectDataKey || tag === 'a') el.setAttribute(FRENGLISH_DATA_KEY, rep.hash)
+          if (injectDataKey) el.setAttribute(FRENGLISH_DATA_KEY, rep.hash)
           if (mutate) {
             el.innerHTML = rep.newText
             stampTranslated(el, currentLanguage);
@@ -548,14 +548,9 @@ export async function extractStrings(
           stampTranslated(parent, currentLanguage);
           span.textContent = rep.newText
           parent.replaceChild(span, node)
-          if (pTag === 'a' && injectDataKey && !parent.hasAttribute(FRENGLISH_DATA_KEY)) {
-            parent.setAttribute(FRENGLISH_DATA_KEY, rep.hash)
-          }
         } else {
           // No visible mutation: just tag the parent so applyTranslations can target it later.
-          if (injectDataKey || pTag === 'a') {
-            parent.setAttribute(FRENGLISH_DATA_KEY, rep.hash)
-          }
+          if (injectDataKey) parent.setAttribute(FRENGLISH_DATA_KEY, rep.hash)
         }
       }
     }
@@ -564,37 +559,6 @@ export async function extractStrings(
   // process head and body
   if (doc.head) for (const n of Array.from(doc.head.childNodes)) await walk(n)
   if (doc.body) for (const n of Array.from(doc.body.childNodes)) await walk(n)
-
-  // promote the first descendant key up to the <a>; also stamp translated-lang when possible.
-  if (injectDataKey) {
-    const anchors = Array.from(doc.querySelectorAll('a[href]')) as HTMLElement[]
-    for (const a of anchors) {
-      if (!a.hasAttribute(FRENGLISH_DATA_KEY)) {
-        const childWithKey = a.querySelector?.(`[${FRENGLISH_DATA_KEY}]`) as HTMLElement | null
-        const k = childWithKey?.getAttribute?.(FRENGLISH_DATA_KEY)
-        if (k) {
-          a.setAttribute(FRENGLISH_DATA_KEY, k)
-          if (mutate && currentLanguage && !a.hasAttribute('translated-lang')) {
-            a.setAttribute('translated-lang', currentLanguage)
-          }
-        }
-      }
-    }
-  }
-
-  // Existing (from earlier change): stamp in-page anchors if they contain keyed content
-  if (mutate && currentLanguage) {
-    const anchors = Array.from(doc.querySelectorAll('a[href^="#"]'))
-    for (const a of anchors) {
-      if (a.hasAttribute('translated-lang')) continue
-      const hasKeyHere =
-        a.hasAttribute(FRENGLISH_DATA_KEY) ||
-        !!a.querySelector?.(`[${FRENGLISH_DATA_KEY}]`)
-      if (hasKeyHere) {
-        a.setAttribute('translated-lang', currentLanguage)
-      }
-    }
-  }
 
   return {
     modifiedHtml: doc.documentElement.outerHTML, // unchanged visually if mutate=false
