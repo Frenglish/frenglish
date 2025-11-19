@@ -1,5 +1,5 @@
 // src/index.ts
-import { PartialConfiguration, Configuration, FlatJSON, Project, FileContentWithLanguage, TranslationResponse, TranslationStatus, Invitation, TextAndStyleMapResponse, LangResolveDecision } from '@frenglish/utils'
+import { PartialConfiguration, Configuration, FlatJSON, Project, FileContentWithLanguage, TranslationResponse, TranslationStatus, Invitation, TextAndStyleMapResponse, LangResolveDecision, UrlMapPerLanguage } from '@frenglish/utils'
 import {
   translate as translateUtil,
   translateString as translateStringUtil,
@@ -19,6 +19,7 @@ import {
 } from './utils/configuration.js'
 import {
   getProjectDomain as getProjectDomainUtil,
+  getProjectUrlMap as getProjectUrlMapUtil,
   getPublicAPIKeyFromDomain as getPublicAPIKeyFromDomainUtil,
   getUserProjects as getUserProjectsUtil,
   createProject as createProjectUtil,
@@ -185,6 +186,15 @@ export interface FrenglishSDK {
    * @throws {Error} If domain retrieval fails
    */
   getProjectDomain(): Promise<string>;
+
+  /**
+   * Retrieves the URL map for a specified language in the project.
+   *
+   * @param language - Target language code for the URL map
+   * @returns URL map object for the specified language
+   * @throws {Error} If URL map retrieval fails
+   */
+  getProjectUrlMap(language: string): Promise<UrlMapPerLanguage>;
 
   /**
    * Retrieves the public API key associated with a given domain.
@@ -389,6 +399,10 @@ export function FrenglishSDK(apiKey: string): FrenglishSDK {
 
     getProjectDomain: async () => {
       return getProjectDomainUtil(apiKey)
+    },
+
+    getProjectUrlMap: async (language) => {
+      return getProjectUrlMapUtil(apiKey, language)
     },
 
     getPublicAPIKeyFromDomain: async (domainURL) => {

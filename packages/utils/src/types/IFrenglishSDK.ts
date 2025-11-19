@@ -1,4 +1,5 @@
 import { Configuration, PartialConfiguration } from './configuration'
+import { UrlMapPerLanguage } from './project';
 import { TranslationResponse, FileContentWithLanguage, RequestTranslationResponse, TranslationStatus } from './translation'
 
 export interface IFrenglishSDK {
@@ -40,6 +41,8 @@ export interface IFrenglishSDK {
   getDefaultConfiguration(): Promise<Configuration>;
 
   getProjectDomain(): Promise<string>;
+
+  getProjectUrlMap(language: string): Promise<UrlMapPerLanguage>;
 
   getTranslationStatus(translationId: number): Promise<TranslationStatus>;
 

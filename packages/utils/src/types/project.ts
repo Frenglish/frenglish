@@ -25,7 +25,8 @@ export interface WordpressConfig {
 export interface ProjectResponse {
     project: Project;
 }
-
+export type UrlMapEntry = { original: string; translated: string };
+export type UrlMapPerLanguage = { enabled: boolean; urls: Record<string, UrlMapEntry> };
 export interface DefaultWebsiteConfig {
     websiteIntegrationType: 'nextjs' | 'webflow' | 'squarespace' | 'salesforce' | 'other';
     isTXT1DNSValidated: boolean;

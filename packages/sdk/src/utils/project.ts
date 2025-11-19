@@ -1,5 +1,5 @@
 import { apiRequest } from "./api.js"
-import { Configuration, Invitation, PartialConfiguration, Project, ProjectResponse, TranslationResponse } from "@frenglish/utils"
+import { Configuration, Invitation, PartialConfiguration, Project, ProjectResponse, TranslationResponse, UrlMapPerLanguage } from "@frenglish/utils"
 /**
  * Retrieves the public API key associated with a project based on its domain; this is for website integration only.
  *
@@ -32,6 +32,24 @@ export async function getProjectDomain(apiKey: string): Promise<string> {
     },
     errorContext: 'Failed to get project domain',
   })
+}
+
+/**
+ * Fetch the URL map for a single language.
+ */
+export async function getProjectUrlMap(
+  apiKey: string,
+  language: string
+): Promise<UrlMapPerLanguage> {
+  if (!language) throw new Error('getProjectUrlMap: `language` is required');
+  return apiRequest<UrlMapPerLanguage>(
+    `/api/project/url-map?language=${encodeURIComponent(language)}`,
+    {
+      method: 'GET',
+      apiKey,
+      errorContext: 'Failed to fetch project URL map',
+    }
+  );
 }
 
 /**

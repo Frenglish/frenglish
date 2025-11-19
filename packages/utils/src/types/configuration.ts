@@ -12,6 +12,7 @@ export interface Configuration {
     oneTimeTranslation: boolean;
     keyFilters: Filter | null;
     languageAvailability: LanguageAvailabilityPayload | null;
+    useTranslatedUrls: boolean;
     createdAt: string | null;
     lastModifiedAt: string | null;
 }

@@ -333,6 +333,20 @@ async function processAttributes(
     const explicitForce = el.getAttribute('data-frenglish-force') === 'content';
     if (explicitSkip) return;
 
+    // Special case: keep og:locale in sync with the translated language,
+    // but never treat it as translatable content.
+    if (metaKey === 'og:locale') {
+      if (mutate && currentLanguage) {
+        const mapped = languageToOgLocale(currentLanguage, content, config);
+        if (mapped && mapped !== content) {
+          el.setAttribute('content', mapped);
+          stampTranslated(el, currentLanguage);
+        }
+      }
+      // Always return here: og:locale is not part of the text map.
+      return;
+    }
+
     // HARD blacklist: never hash/translate these keys unless explicitForce is set.
     const HARD_BLACKLIST_RE =
       /(?:^|:)(?:published_time|modified_time|updated_time|article:published_time|article:modified_time|date|datetime|release_date|expiry|expiration|url|image(?::(?:secure_url|url|width|height|type))?|video|audio|locale|site_name|site|app(?:[_:-]?id)?|id|token|verification|verify|robots|viewport|charset|theme-?color|color-?scheme|referrer|generator|format-detection|twitter:card|twitter:site|twitter:label1|twitter:data1|og:type)\b/;
@@ -735,6 +749,106 @@ const DEFAULT_EXCLUDED_ELEMENTS = '.no-translate'
 // ║  COMPRESSION / DECOMPRESSION HELPERS                                     ║
 // ╚══════════════════════════════════════════════════════════════════════════╝
 // -----------------------------------------------------------------------------
+/**
+ * Map a BCP-47-ish language code (e.g. "fr", "fr-ca") to an Open Graph
+ * locale value like "fr_FR" or "fr_CA".
+ *
+ * We try, in order:
+ *  - the language's own region (fr-ca → fr_CA)
+ *  - any variant in configuration that shares the same base (fr-ca in config)
+ *  - the existing og:locale's region (en_US → US)
+ *  - a small set of sensible defaults (fr → fr_FR, en → en_US, …)
+ */
+function languageToOgLocale(
+  lang: string | undefined,
+  existingOgLocale?: string | null,
+  config?: Configuration
+): string | null {
+  if (!lang) return null;
+  const raw = String(lang).trim();
+  if (!raw) return null;
+
+  const norm = raw.toLowerCase().replace('_', '-');
+  const parts = norm.split('-').filter(Boolean);
+  if (!parts.length) return null;
+
+  const base = parts[0];
+  let region: string | undefined;
+
+  // 1) Use region from the language itself, if present (fr-ca → ca)
+  if (parts.length > 1) {
+    const last = parts[parts.length - 1];
+    if (last.length === 2 && last !== base) {
+      region = last;
+    }
+  }
+
+  // 2) Look for a variant with region in the configuration (e.g. "fr-ca")
+  if (!region && config) {
+    const allLangs: string[] = [];
+    if (config.originLanguage) allLangs.push(String(config.originLanguage));
+    if (Array.isArray(config.languages)) {
+      for (const l of config.languages) {
+        if (l) allLangs.push(String(l));
+      }
+    }
+
+    for (const lRaw of allLangs) {
+      const lNorm = lRaw.toLowerCase().replace('_', '-');
+      const lParts = lNorm.split('-').filter(Boolean);
+      if (!lParts.length) continue;
+
+      // same base (fr, en, etc.)
+      if (lParts[0] === base && lParts.length > 1) {
+        const candidate = lParts[lParts.length - 1];
+        if (candidate.length === 2 && candidate !== base) {
+          region = candidate;
+          break;
+        }
+      }
+    }
+  }
+
+  // 3) Fallback: reuse region from existing og:locale,
+  //    but ONLY if the base matches (fr + fr_FR → FR, NOT fr + en_US)
+  if (!region && existingOgLocale) {
+    const ex = String(existingOgLocale).trim();
+    if (ex) {
+      const exNorm = ex.toLowerCase().replace('-', '_');
+      const exParts = exNorm.split('_');
+      if (exParts.length >= 2 && exParts[1].length === 2) {
+        const exBase = exParts[0];      // "en" in "en_us"
+        const exRegion = exParts[1];    // "us"
+        if (exBase === base) {
+          region = exRegion;
+        }
+      }
+    }
+  }
+
+  // 4) Last-resort sensible defaults (your CA-centric behavior)
+  if (!region) {
+    switch (base) {
+      case 'en':
+        region = 'ca';
+        break;
+      case 'fr':
+        region = 'ca';
+        break;
+      case 'es':
+        region = 'es';
+        break;
+      case 'pt':
+        region = 'br';
+        break;
+      default:
+        // If we don't know, don't force an invalid OG locale
+        return null;
+    }
+  }
+
+  return `${base}_${region.toUpperCase()}`;
+}
 
 /**
  * Convenience wrapper around compressHTML() for a single HTML fragment.
