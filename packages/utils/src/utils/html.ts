@@ -83,6 +83,145 @@ export const PLACEHOLDER_TAG_RE = /<(?:sty|href|excl)\d+\b[^>]*>/i;
 // ---------------------------------------------------------------------------
 // Utility helpers
 // ---------------------------------------------------------------------------
+/**
+ * Injects the language segment into a path for canonical URLs.
+ *
+ * Examples (lang = "fr-ca"):
+ *   "/"                          -> "/fr-ca"
+ *   "/contact"                   -> "/fr-ca/contact"
+ *   "/fr/contact"                -> "/fr-ca/contact"
+ *   "/fr-ca/contact"             -> "/fr-ca/contact" (no change)
+ *   "/proxy/cloudflare.com/"     -> "/proxy/cloudflare.com/fr-ca/"
+ *   "/proxy/cloudflare.com/en/"  -> "/proxy/cloudflare.com/fr-ca/"
+ */
+function injectLanguageIntoCanonicalPath(path: string, lang: string): string {
+  const lowerLang = (lang || '').toLowerCase().trim();
+  if (!lowerLang) return path;
+
+  if (!path) path = '/';
+
+  // Normalize multiple slashes
+  let basePath = path.replace(/\/{2,}/g, '/');
+  if (!basePath.startsWith('/')) basePath = '/' + basePath;
+
+  const hadTrailing =
+    basePath.length > 1 && basePath.endsWith('/');
+
+  // Drop trailing slash for segment logic (we’ll restore if needed)
+  let work = basePath;
+  if (work.length > 1 && work.endsWith('/')) {
+    work = work.slice(0, -1);
+  }
+
+  const segs = work.split('/').filter(Boolean);
+  const isLangLike = (s: string) =>
+    /^[a-z]{2}(?:-[a-z0-9]{2,})?$/.test((s || '').toLowerCase());
+
+  // Root: just "/"
+  if (!segs.length) {
+    let out = `/${lowerLang}`;
+    if (hadTrailing) out += '/';
+    return out;
+  }
+
+  // Proxy pattern: /proxy/{host}/[lang]/...
+  if (segs[0] === 'proxy' && segs.length >= 2) {
+    const host = segs[1];
+    const rest = segs.slice(2);
+
+    if (rest.length && isLangLike(rest[0]) && rest[0].toLowerCase() === lowerLang) {
+      // already has this lang
+      return basePath;
+    }
+
+    const newRest =
+      rest.length && isLangLike(rest[0])
+        ? [lowerLang, ...rest.slice(1)]
+        : [lowerLang, ...rest];
+
+    let newPath = '/' + ['proxy', host, ...newRest].join('/');
+    if (hadTrailing) newPath += '/';
+    return newPath;
+  }
+
+  // Non-proxy path
+  if (segs.length && isLangLike(segs[0]) && segs[0].toLowerCase() === lowerLang) {
+    // Already prefixed with this language
+    return basePath;
+  }
+
+  const rest =
+    segs.length && isLangLike(segs[0])
+      ? segs.slice(1) // replace existing lang prefix
+      : segs;         // prepend language
+
+  let newPath = '/' + [lowerLang, ...rest].join('/');
+  if (hadTrailing) newPath += '/';
+  return newPath;
+}
+
+/**
+ * Rewrite canonical href so it includes the current language in the path.
+ * Works for:
+ *   - absolute URLs: "https://www.cloudflare.com/" -> "https://www.cloudflare.com/fr-ca"
+ *   - relative / proxy URLs: "/proxy/cloudflare.com/" -> "/proxy/cloudflare.com/fr-ca/"
+ */
+export function rewriteProxyCanonicalHref(
+  href: string | null,
+  currentLanguage?: string
+): string | null {
+  if (!href || !currentLanguage) {
+    return href;
+  }
+
+  const trimmed = href.trim();
+  if (!trimmed) {
+    return href;
+  }
+
+  const lang = currentLanguage.toLowerCase();
+
+  // Case 1: absolute URL (https://...)
+  if (/^https?:\/\//i.test(trimmed)) {
+    try {
+      const url = new URL(trimmed);
+      const oldPath = url.pathname || '/';
+      const newPath = injectLanguageIntoCanonicalPath(oldPath, lang);
+      if (newPath === oldPath) {
+        return href;
+      }
+      url.pathname = newPath;
+      return url.toString();
+    } catch {
+      // fall through to relative logic
+    }
+  }
+
+  // Case 2: relative URL (including /proxy/...)
+  let path = trimmed;
+  let suffix = '';
+  const qIndex = path.indexOf('?');
+  const hIndex = path.indexOf('#');
+  let cut = -1;
+
+  if (qIndex >= 0 && hIndex >= 0) cut = Math.min(qIndex, hIndex);
+  else if (qIndex >= 0) cut = qIndex;
+  else if (hIndex >= 0) cut = hIndex;
+
+  if (cut >= 0) {
+    suffix = path.slice(cut);
+    path = path.slice(0, cut);
+  }
+
+  const oldPath = path || '/';
+  const newPath = injectLanguageIntoCanonicalPath(oldPath, lang);
+
+  if (newPath === oldPath) {
+    return href;
+  }
+
+  return newPath + suffix;
+}
 
 // match tag‑names like "sty0", "href12", "excl3"
 const PLACEHOLDER_TAGNAME_RE = /^(?:sty|href|excl)\d+$/i
@@ -312,6 +451,21 @@ async function processAttributes(
     }
   }
 
+  // <link rel="canonical" href="/proxy/..."> — keep canonical in sync with language
+  if (tag === 'link') {
+    const relRaw = el.getAttribute('rel') || '';
+    const rel = relRaw.toLowerCase();
+    if (rel && rel.split(/\s+/).includes('canonical')) {
+      const href = el.getAttribute('href');
+      const updated = rewriteProxyCanonicalHref(href, currentLanguage);
+
+      if (updated && updated !== href) {
+        el.setAttribute('href', updated);
+        stampTranslated(el, currentLanguage);
+      }
+    }
+  }
+
   // <meta name|property|itemprop=... content="...">
   if (tag === 'meta') {
     const specificKeyAttr = `${FRENGLISH_DATA_KEY}-content`;
@@ -344,6 +498,19 @@ async function processAttributes(
         }
       }
       // Always return here: og:locale is not part of the text map.
+      return;
+    }
+
+    // Special case for og:url – rewrite URL path with language segment
+    if (metaKey === 'og:url') {
+      if (mutate && currentLanguage) {
+        const updated = rewriteProxyCanonicalHref(content, currentLanguage);
+        if (updated && updated !== content) {
+          el.setAttribute('content', updated);
+          stampTranslated(el, currentLanguage);
+        }
+      }
+      // Do NOT treat og:url as translatable content.
       return;
     }
 
