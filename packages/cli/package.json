@@ -1,6 +1,6 @@
 {
     "name": "@frenglish/cli",
-    "version": "1.0.44",
+    "version": "1.0.45",
     "description": "CLI for Frenglish translation service",
     "main": "dist/index.js",
     "type": "module",
@@ -20,8 +20,7 @@
     "scripts": {
         "clean": "rm -rf dist",
         "build": "pnpm run clean && tsc",
-        "prepare": "pnpm run build",
-        "test": "jest"
+        "prepare": "pnpm run build"
     },
     "keywords": [
         "cli",
@@ -34,12 +33,9 @@
         "@types/express": "^4.17.21",
         "@types/figlet": "^1.7.0",
         "@types/inquirer": "^9.0.7",
-        "@types/jest": "^27.0.0",
         "@types/node": "^22.5.4",
         "@types/node-fetch": "^2.6.12",
         "@types/yargs": "^17.0.0",
-        "jest": "^27.0.0",
-        "ts-jest": "^27.0.0",
         "typescript": "^5.8.2"
     },
     "dependencies": {
