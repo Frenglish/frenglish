@@ -327,9 +327,11 @@ function injectCanonicalLinkIfMissing(
       }
     }
     
-    // Use language injection for canonical path if language is provided, otherwise use original path
-    const canonicalPath = currentLanguage 
-      ? injectLanguageIntoCanonicalPath(oldPath, currentLanguage)
+    // Use language injection for canonical path
+    // If currentLanguage is provided, use it; otherwise use originLanguage; otherwise use original path
+    const langToUse = currentLanguage || originLanguage;
+    const canonicalPath = langToUse 
+      ? injectLanguageIntoCanonicalPath(oldPath, langToUse)
       : normalizeUrlPath(oldPath);
     
     // Normalize path (remove trailing slash except root)
@@ -775,11 +777,17 @@ async function processAttributes(
     // Special case: keep og:locale in sync with the translated language,
     // but never treat it as translatable content.
     if (metaKey === 'og:locale') {
-      if (mutate && currentLanguage) {
-        const mapped = languageToOgLocale(currentLanguage, content, config);
-        if (mapped && mapped !== content) {
-          el.setAttribute('content', mapped);
-          stampTranslated(el, currentLanguage);
+      if (mutate) {
+        // Use currentLanguage if available, otherwise use originLanguage
+        const langToUse = currentLanguage || config.originLanguage;
+        if (langToUse) {
+          const mapped = languageToOgLocale(langToUse, content, config);
+          if (mapped && mapped !== content) {
+            el.setAttribute('content', mapped);
+            if (currentLanguage) {
+              stampTranslated(el, currentLanguage);
+            }
+          }
         }
       }
       // Always return here: og:locale is not part of the text map.
@@ -1060,6 +1068,15 @@ export async function extractStrings(
   // Inject canonical link if it doesn't exist (for both translated and origin language)
   if (mutate && doc.head) {
     injectCanonicalLinkIfMissing(doc, currentLanguage, config.originLanguage)
+  }
+
+  // Update HTML lang attribute to use origin language if currentLanguage is undefined
+  if (mutate && doc.documentElement) {
+    const langToUse = currentLanguage || config.originLanguage;
+    if (langToUse) {
+      // Convert language code format (e.g., en-CA stays as en-CA for HTML lang attribute)
+      setDocumentLang(doc, langToUse);
+    }
   }
 
   return {
