@@ -235,6 +235,8 @@ function injectCanonicalLinkIfMissing(
   currentLanguage?: string,
   originLanguage?: string | null
 ): void {
+  // Normalize originLanguage - convert null/empty to undefined for consistent handling
+  const normalizedOriginLanguage = originLanguage && originLanguage.trim() ? originLanguage.trim() : undefined;
   // Ensure head exists
   if (!doc.head) {
     const head = doc.createElement('head');
@@ -288,7 +290,7 @@ function injectCanonicalLinkIfMissing(
   if (!baseUrl || baseUrl === 'about:blank' || baseUrl === 'about:srcdoc') {
     try {
       // Use current language if available, otherwise use origin language, otherwise use root
-      const langToUse = currentLanguage || originLanguage;
+      const langToUse = currentLanguage || normalizedOriginLanguage;
       const canonicalPath = langToUse ? `/${langToUse}` : '/';
       const normalizedPath = normalizeUrlPath(canonicalPath);
       
@@ -329,7 +331,7 @@ function injectCanonicalLinkIfMissing(
     
     // Use language injection for canonical path
     // If currentLanguage is provided, use it; otherwise use originLanguage; otherwise use original path
-    const langToUse = currentLanguage || originLanguage;
+    const langToUse = currentLanguage || normalizedOriginLanguage;
     const canonicalPath = langToUse 
       ? injectLanguageIntoCanonicalPath(oldPath, langToUse)
       : normalizeUrlPath(oldPath);
@@ -362,7 +364,7 @@ function injectCanonicalLinkIfMissing(
       
       // Use language injection for canonical path
       // If currentLanguage is provided, use it; otherwise use originLanguage; otherwise use original path
-      const langToUse = currentLanguage || originLanguage;
+      const langToUse = currentLanguage || normalizedOriginLanguage;
       const canonicalPath = langToUse 
         ? injectLanguageIntoCanonicalPath(path, langToUse)
         : normalizeUrlPath(path);
@@ -376,7 +378,7 @@ function injectCanonicalLinkIfMissing(
     } catch {
       // Final fallback: inject a simple canonical
       try {
-        const langToUse = currentLanguage || originLanguage;
+        const langToUse = currentLanguage || normalizedOriginLanguage;
         const canonicalLink = doc.createElement('link');
         canonicalLink.setAttribute('rel', 'canonical');
         canonicalLink.setAttribute('href', langToUse ? `/${langToUse}` : '/');
@@ -781,7 +783,10 @@ async function processAttributes(
         // Use currentLanguage if available, otherwise use originLanguage
         const langToUse = currentLanguage || config.originLanguage;
         if (langToUse) {
-          const mapped = languageToOgLocale(langToUse, content, config);
+          // For origin language, don't pass existing content to avoid reusing wrong region
+          // Pass null so it uses the origin language's region or defaults
+          const existingOgLocaleForMapping = currentLanguage ? content : null;
+          const mapped = languageToOgLocale(langToUse, existingOgLocaleForMapping, config);
           if (mapped && mapped !== content) {
             el.setAttribute('content', mapped);
             if (currentLanguage) {
