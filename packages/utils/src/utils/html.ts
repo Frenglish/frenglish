@@ -104,8 +104,7 @@ function injectLanguageIntoCanonicalPath(path: string, lang: string): string {
   let basePath = path.replace(/\/{2,}/g, '/');
   if (!basePath.startsWith('/')) basePath = '/' + basePath;
 
-  const hadTrailing =
-    basePath.length > 1 && basePath.endsWith('/');
+  // Always remove trailing slash (except root) - canonical URLs should not have trailing slashes
 
   // Drop trailing slash for segment logic (we’ll restore if needed)
   let work = basePath;
@@ -119,9 +118,7 @@ function injectLanguageIntoCanonicalPath(path: string, lang: string): string {
 
   // Root: just "/"
   if (!segs.length) {
-    let out = `/${lowerLang}`;
-    if (hadTrailing) out += '/';
-    return out;
+    return `/${lowerLang}`;
   }
 
   // Proxy pattern: /proxy/{host}/[lang]/...
@@ -130,8 +127,8 @@ function injectLanguageIntoCanonicalPath(path: string, lang: string): string {
     const rest = segs.slice(2);
 
     if (rest.length && isLangLike(rest[0]) && rest[0].toLowerCase() === lowerLang) {
-      // already has this lang
-      return basePath;
+      // already has this lang - return normalized (no trailing slash)
+      return work;
     }
 
     const newRest =
@@ -139,15 +136,13 @@ function injectLanguageIntoCanonicalPath(path: string, lang: string): string {
         ? [lowerLang, ...rest.slice(1)]
         : [lowerLang, ...rest];
 
-    let newPath = '/' + ['proxy', host, ...newRest].join('/');
-    if (hadTrailing) newPath += '/';
-    return newPath;
+    return '/' + ['proxy', host, ...newRest].join('/');
   }
 
   // Non-proxy path
   if (segs.length && isLangLike(segs[0]) && segs[0].toLowerCase() === lowerLang) {
-    // Already prefixed with this language
-    return basePath;
+    // Already prefixed with this language - return normalized (no trailing slash)
+    return work;
   }
 
   const rest =
@@ -155,22 +150,46 @@ function injectLanguageIntoCanonicalPath(path: string, lang: string): string {
       ? segs.slice(1) // replace existing lang prefix
       : segs;         // prepend language
 
-  let newPath = '/' + [lowerLang, ...rest].join('/');
-  if (hadTrailing) newPath += '/';
-  return newPath;
+  return '/' + [lowerLang, ...rest].join('/');
+}
+
+/**
+ * Strips frx_from_lang parameter from a URL string
+ */
+function stripFrxFromLang(urlString: string): string {
+  try {
+    const url = new URL(urlString);
+    url.searchParams.delete('frx_from_lang');
+    return url.toString();
+  } catch {
+    // If URL parsing fails, try simple string replacement as fallback
+    return urlString
+      .replace(/[?&]frx_from_lang=[^&]*/g, '')
+      .replace(/[?&]frx_from_lang=[^"'\s]*/g, '');
+  }
+}
+
+/**
+ * Normalizes a URL path by removing trailing slashes (except root)
+ */
+function normalizeUrlPath(path: string): string {
+  if (!path || path === '/') return '/';
+  // Remove trailing slash if present and not root
+  return path.endsWith('/') ? path.slice(0, -1) : path;
 }
 
 /**
  * Rewrite canonical href so it includes the current language in the path.
+ * Also strips frx_from_lang parameter and removes trailing slashes.
  * Works for:
  *   - absolute URLs: "https://www.cloudflare.com/" -> "https://www.cloudflare.com/fr-ca"
- *   - relative / proxy URLs: "/proxy/cloudflare.com/" -> "/proxy/cloudflare.com/fr-ca/"
+ *   - relative / proxy URLs: "/proxy/cloudflare.com/" -> "/proxy/cloudflare.com/fr-ca"
  */
 export function rewriteProxyCanonicalHref(
   href: string | null,
   currentLanguage?: string
 ): string | null {
-  if (!href || !currentLanguage) {
+  if (!href) {
     return href;
   }
 
@@ -179,18 +198,48 @@ export function rewriteProxyCanonicalHref(
     return href;
   }
 
+  // First, strip frx_from_lang parameter
+  let cleaned = stripFrxFromLang(trimmed);
+
+  if (!currentLanguage) {
+    // Even without language, still clean the URL and remove trailing slash
+    try {
+      const url = new URL(cleaned);
+      url.pathname = normalizeUrlPath(url.pathname);
+      return url.toString();
+    } catch {
+      // Relative URL - remove trailing slash and preserve query/fragment
+      let path = cleaned;
+      let suffix = '';
+      const qIndex = path.indexOf('?');
+      const hIndex = path.indexOf('#');
+      let cut = -1;
+
+      if (qIndex >= 0 && hIndex >= 0) cut = Math.min(qIndex, hIndex);
+      else if (qIndex >= 0) cut = qIndex;
+      else if (hIndex >= 0) cut = hIndex;
+
+      if (cut >= 0) {
+        suffix = path.slice(cut);
+        path = path.slice(0, cut);
+      }
+      
+      const normalizedPath = normalizeUrlPath(path);
+      return normalizedPath + suffix;
+    }
+  }
+
   const lang = currentLanguage.toLowerCase();
 
   // Case 1: absolute URL (https://...)
-  if (/^https?:\/\//i.test(trimmed)) {
+  if (/^https?:\/\//i.test(cleaned)) {
     try {
-      const url = new URL(trimmed);
+      const url = new URL(cleaned);
       const oldPath = url.pathname || '/';
       const newPath = injectLanguageIntoCanonicalPath(oldPath, lang);
-      if (newPath === oldPath) {
-        return href;
-      }
-      url.pathname = newPath;
+      // Normalize path (remove trailing slash except root)
+      const normalizedPath = normalizeUrlPath(newPath);
+      url.pathname = normalizedPath;
       return url.toString();
     } catch {
       // fall through to relative logic
@@ -198,7 +247,7 @@ export function rewriteProxyCanonicalHref(
   }
 
   // Case 2: relative URL (including /proxy/...)
-  let path = trimmed;
+  let path = cleaned;
   let suffix = '';
   const qIndex = path.indexOf('?');
   const hIndex = path.indexOf('#');
@@ -215,12 +264,14 @@ export function rewriteProxyCanonicalHref(
 
   const oldPath = path || '/';
   const newPath = injectLanguageIntoCanonicalPath(oldPath, lang);
+  // Normalize path (remove trailing slash except root)
+  const normalizedPath = normalizeUrlPath(newPath);
 
-  if (newPath === oldPath) {
-    return href;
+  if (normalizedPath === oldPath && !suffix) {
+    return cleaned;
   }
 
-  return newPath + suffix;
+  return normalizedPath + suffix;
 }
 
 // match tag‑names like "sty0", "href12", "excl3"
@@ -457,11 +508,18 @@ async function processAttributes(
     const rel = relRaw.toLowerCase();
     if (rel && rel.split(/\s+/).includes('canonical')) {
       const href = el.getAttribute('href');
+      // Always clean frx_from_lang and normalize trailing slashes, even without language
       const updated = rewriteProxyCanonicalHref(href, currentLanguage);
 
       if (updated && updated !== href) {
         el.setAttribute('href', updated);
         stampTranslated(el, currentLanguage);
+      } else if (href && (href.includes('frx_from_lang') || (href !== '/' && href.endsWith('/')))) {
+        // Even if rewriteProxyCanonicalHref didn't change it, clean it if needed
+        const cleaned = rewriteProxyCanonicalHref(href, currentLanguage);
+        if (cleaned && cleaned !== href) {
+          el.setAttribute('href', cleaned);
+        }
       }
     }
   }
@@ -502,12 +560,19 @@ async function processAttributes(
     }
 
     // Special case for og:url – rewrite URL path with language segment
+    // Always strip frx_from_lang and remove trailing slashes, even without language
     if (metaKey === 'og:url') {
-      if (mutate && currentLanguage) {
+      if (mutate) {
         const updated = rewriteProxyCanonicalHref(content, currentLanguage);
         if (updated && updated !== content) {
           el.setAttribute('content', updated);
           stampTranslated(el, currentLanguage);
+        } else if (content && (content.includes('frx_from_lang') || (content !== '/' && content.endsWith('/')))) {
+          // Even if rewriteProxyCanonicalHref didn't change it, clean it if needed
+          const cleaned = rewriteProxyCanonicalHref(content, currentLanguage);
+          if (cleaned && cleaned !== content) {
+            el.setAttribute('content', cleaned);
+          }
         }
       }
       // Do NOT treat og:url as translatable content.
