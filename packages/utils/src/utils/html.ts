@@ -232,7 +232,8 @@ function insertCanonicalLink(doc: Document, canonicalLink: HTMLLinkElement): voi
  */
 function injectCanonicalLinkIfMissing(
   doc: Document, 
-  currentLanguage: string
+  currentLanguage?: string,
+  originLanguage?: string | null
 ): void {
   // Ensure head exists
   if (!doc.head) {
@@ -286,8 +287,9 @@ function injectCanonicalLinkIfMissing(
   // This ensures we always inject a canonical if we have a language
   if (!baseUrl || baseUrl === 'about:blank' || baseUrl === 'about:srcdoc') {
     try {
-      // Use language prefix for canonical
-      const canonicalPath = `/${currentLanguage}`;
+      // Use current language if available, otherwise use origin language, otherwise use root
+      const langToUse = currentLanguage || originLanguage;
+      const canonicalPath = langToUse ? `/${langToUse}` : '/';
       const normalizedPath = normalizeUrlPath(canonicalPath);
       
       const canonicalLink = doc.createElement('link');
@@ -325,8 +327,10 @@ function injectCanonicalLinkIfMissing(
       }
     }
     
-    // Use language injection for canonical path
-    const canonicalPath = injectLanguageIntoCanonicalPath(oldPath, currentLanguage);
+    // Use language injection for canonical path if language is provided, otherwise use original path
+    const canonicalPath = currentLanguage 
+      ? injectLanguageIntoCanonicalPath(oldPath, currentLanguage)
+      : normalizeUrlPath(oldPath);
     
     // Normalize path (remove trailing slash except root)
     const normalizedPath = normalizeUrlPath(canonicalPath);
@@ -355,7 +359,11 @@ function injectCanonicalLinkIfMissing(
       }
       
       // Use language injection for canonical path
-      const canonicalPath = injectLanguageIntoCanonicalPath(path, currentLanguage);
+      // If currentLanguage is provided, use it; otherwise use originLanguage; otherwise use original path
+      const langToUse = currentLanguage || originLanguage;
+      const canonicalPath = langToUse 
+        ? injectLanguageIntoCanonicalPath(path, langToUse)
+        : normalizeUrlPath(path);
       
       const normalizedPath = normalizeUrlPath(canonicalPath);
       
@@ -364,11 +372,12 @@ function injectCanonicalLinkIfMissing(
       canonicalLink.setAttribute('href', normalizedPath);
       insertCanonicalLink(doc, canonicalLink);
     } catch {
-      // Final fallback: inject a simple language-based canonical
+      // Final fallback: inject a simple canonical
       try {
+        const langToUse = currentLanguage || originLanguage;
         const canonicalLink = doc.createElement('link');
         canonicalLink.setAttribute('rel', 'canonical');
-        canonicalLink.setAttribute('href', `/${currentLanguage}`);
+        canonicalLink.setAttribute('href', langToUse ? `/${langToUse}` : '/');
         insertCanonicalLink(doc, canonicalLink);
       } catch {
         // If this also fails, don't inject
@@ -1048,9 +1057,9 @@ export async function extractStrings(
   if (doc.head) for (const n of Array.from(doc.head.childNodes)) await walk(n)
   if (doc.body) for (const n of Array.from(doc.body.childNodes)) await walk(n)
 
-  // Inject canonical link if it doesn't exist
-  if (mutate && doc.head && currentLanguage) {
-    injectCanonicalLinkIfMissing(doc, currentLanguage)
+  // Inject canonical link if it doesn't exist (for both translated and origin language)
+  if (mutate && doc.head) {
+    injectCanonicalLinkIfMissing(doc, currentLanguage, config.originLanguage)
   }
 
   return {
