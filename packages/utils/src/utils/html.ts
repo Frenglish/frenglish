@@ -205,7 +205,8 @@ export function rewriteProxyCanonicalHref(
     // Even without language, still clean the URL and remove trailing slash
     try {
       const url = new URL(cleaned);
-      url.pathname = normalizeUrlPath(url.pathname);
+      const normalizedPathname = normalizeUrlPath(url.pathname);
+      url.pathname = normalizedPathname;
       return url.toString();
     } catch {
       // Relative URL - remove trailing slash and preserve query/fragment
@@ -563,15 +564,32 @@ async function processAttributes(
     // Always strip frx_from_lang and remove trailing slashes, even without language
     if (metaKey === 'og:url') {
       if (mutate) {
+        // Always normalize og:url - remove trailing slashes and frx_from_lang
         const updated = rewriteProxyCanonicalHref(content, currentLanguage);
-        if (updated && updated !== content) {
-          el.setAttribute('content', updated);
-          stampTranslated(el, currentLanguage);
-        } else if (content && (content.includes('frx_from_lang') || (content !== '/' && content.endsWith('/')))) {
-          // Even if rewriteProxyCanonicalHref didn't change it, clean it if needed
-          const cleaned = rewriteProxyCanonicalHref(content, currentLanguage);
-          if (cleaned && cleaned !== content) {
-            el.setAttribute('content', cleaned);
+        if (updated) {
+          // Always update if there's any difference (trailing slash, frx_from_lang, or language injection)
+          if (updated !== content) {
+            el.setAttribute('content', updated);
+            stampTranslated(el, currentLanguage);
+          } else if (content && content !== '/' && content.endsWith('/')) {
+            // Force normalization even if rewriteProxyCanonicalHref returned unchanged
+            // This handles edge cases where the function might not detect the trailing slash
+            try {
+              const url = new URL(content);
+              const normalizedPath = normalizeUrlPath(url.pathname);
+              if (normalizedPath !== url.pathname) {
+                url.pathname = normalizedPath;
+                el.setAttribute('content', url.toString());
+                stampTranslated(el, currentLanguage);
+              }
+            } catch {
+              // If URL parsing fails, try simple string replacement
+              const normalized = content.replace(/\/+$/, '') || '/';
+              if (normalized !== content && normalized !== '/') {
+                el.setAttribute('content', normalized);
+                stampTranslated(el, currentLanguage);
+              }
+            }
           }
         }
       }
