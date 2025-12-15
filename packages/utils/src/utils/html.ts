@@ -160,22 +160,40 @@ function stripFrxFromLang(urlString: string): string {
   try {
     const url = new URL(urlString);
     url.searchParams.delete('frx_from_lang');
-    return url.toString();
+    let result = url.toString();
+    // Clean up any trailing ? or = that might be left after parameter removal
+    // This handles cases where the parameter was the only one or had no value
+    result = result.replace(/[?=&]+$/, '');
+    // If we removed the last parameter and left a trailing ?, remove it
+    result = result.replace(/\?$/, '');
+    return result;
   } catch {
     // If URL parsing fails, try simple string replacement as fallback
-    return urlString
-      .replace(/[?&]frx_from_lang=[^&]*/g, '')
-      .replace(/[?&]frx_from_lang=[^"'\s]*/g, '');
+    let result = urlString
+      // Match parameter with value: ?frx_from_lang=value or &frx_from_lang=value
+      .replace(/[?&]frx_from_lang=[^&"'\s]*/g, '')
+      // Match parameter with just equals: ?frx_from_lang= or &frx_from_lang=
+      .replace(/[?&]frx_from_lang=/g, '');
+    
+    // Clean up any trailing ? or = that might be left
+    result = result.replace(/[?=&]+$/, '');
+    // Remove trailing ? if it's the last character
+    result = result.replace(/\?$/, '');
+    return result;
   }
 }
 
 /**
  * Normalizes a URL path by removing trailing slashes (except root)
+ * Also removes trailing = signs which shouldn't be in paths
  */
 function normalizeUrlPath(path: string): string {
   if (!path || path === '/') return '/';
+  // Remove trailing = signs (these shouldn't be in paths)
+  let normalized = path.replace(/=+$/, '');
   // Remove trailing slash if present and not root
-  return path.endsWith('/') ? path.slice(0, -1) : path;
+  normalized = normalized.endsWith('/') && normalized.length > 1 ? normalized.slice(0, -1) : normalized;
+  return normalized;
 }
 
 /**
@@ -207,7 +225,9 @@ export function rewriteProxyCanonicalHref(
       const url = new URL(cleaned);
       const normalizedPathname = normalizeUrlPath(url.pathname);
       url.pathname = normalizedPathname;
-      return url.toString();
+      const result = url.toString();
+      // Final cleanup: remove any trailing "=" from the entire URL
+      return result.replace(/=+$/, '');
     } catch {
       // Relative URL - remove trailing slash and preserve query/fragment
       let path = cleaned;
@@ -226,7 +246,11 @@ export function rewriteProxyCanonicalHref(
       }
       
       const normalizedPath = normalizeUrlPath(path);
-      return normalizedPath + suffix;
+      // Clean up trailing "=" from suffix as well
+      const cleanedSuffix = suffix.replace(/=+$/, '');
+      const result = normalizedPath + cleanedSuffix;
+      // Final cleanup: remove any trailing "=" from the entire URL (in case path itself had trailing "=")
+      return result.replace(/=+$/, '');
     }
   }
 
@@ -241,7 +265,9 @@ export function rewriteProxyCanonicalHref(
       // Normalize path (remove trailing slash except root)
       const normalizedPath = normalizeUrlPath(newPath);
       url.pathname = normalizedPath;
-      return url.toString();
+      const result = url.toString();
+      // Final cleanup: remove any trailing "=" from the entire URL
+      return result.replace(/=+$/, '');
     } catch {
       // fall through to relative logic
     }
@@ -269,10 +295,17 @@ export function rewriteProxyCanonicalHref(
   const normalizedPath = normalizeUrlPath(newPath);
 
   if (normalizedPath === oldPath && !suffix) {
-    return cleaned;
+    // Even when path doesn't change (e.g., origin language), ensure path is normalized (no trailing slash)
+    // and clean up trailing "="
+    const result = normalizedPath.replace(/=+$/, '');
+    return result;
   }
 
-  return normalizedPath + suffix;
+  // Clean up trailing "=" from suffix as well
+  const cleanedSuffix = suffix.replace(/=+$/, '');
+  const result = normalizedPath + cleanedSuffix;
+  // Final cleanup: remove any trailing "=" from the entire URL (in case path itself had trailing "=")
+  return result.replace(/=+$/, '');
 }
 
 // match tag‑names like "sty0", "href12", "excl3"
@@ -571,20 +604,27 @@ async function processAttributes(
           if (updated !== content) {
             el.setAttribute('content', updated);
             stampTranslated(el, currentLanguage);
-          } else if (content && content !== '/' && content.endsWith('/')) {
+          } else if (content && ((content !== '/' && content.endsWith('/')) || content.endsWith('='))) {
             // Force normalization even if rewriteProxyCanonicalHref returned unchanged
-            // This handles edge cases where the function might not detect the trailing slash
+            // This handles edge cases where the function might not detect the trailing slash or "="
             try {
               const url = new URL(content);
               const normalizedPath = normalizeUrlPath(url.pathname);
-              if (normalizedPath !== url.pathname) {
+              if (normalizedPath !== url.pathname || content.endsWith('=')) {
                 url.pathname = normalizedPath;
-                el.setAttribute('content', url.toString());
-                stampTranslated(el, currentLanguage);
+                let result = url.toString();
+                // Clean up any trailing "="
+                result = result.replace(/=+$/, '');
+                if (result !== content) {
+                  el.setAttribute('content', result);
+                  stampTranslated(el, currentLanguage);
+                }
               }
             } catch {
               // If URL parsing fails, try simple string replacement
-              const normalized = content.replace(/\/+$/, '') || '/';
+              let normalized = content.replace(/\/+$/, '') || '/';
+              // Also remove trailing "="
+              normalized = normalized.replace(/=+$/, '');
               if (normalized !== content && normalized !== '/') {
                 el.setAttribute('content', normalized);
                 stampTranslated(el, currentLanguage);
