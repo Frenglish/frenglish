@@ -197,8 +197,190 @@ function normalizeUrlPath(path: string): string {
 }
 
 /**
+ * Helper function to insert canonical link in the optimal position in head.
+ * Tries to insert after title tag, or after charset/viewport meta tags.
+ */
+function insertCanonicalLink(doc: Document, canonicalLink: HTMLLinkElement): void {
+  // Try to insert after title tag if it exists
+  const titleTag = doc.head.querySelector('title');
+  if (titleTag) {
+    // Insert after title (before its next sibling, or at end if no next sibling)
+    if (titleTag.nextSibling) {
+      doc.head.insertBefore(canonicalLink, titleTag.nextSibling);
+    } else {
+      doc.head.appendChild(canonicalLink);
+    }
+    return;
+  }
+  
+  // If no title, try to insert after charset or viewport meta tags
+  const charset = doc.head.querySelector('meta[charset]');
+  const viewport = doc.head.querySelector('meta[name="viewport"]');
+  const insertAfter = viewport || charset;
+  if (insertAfter && insertAfter.nextSibling) {
+    doc.head.insertBefore(canonicalLink, insertAfter.nextSibling);
+  } else {
+    // Fallback: append to head
+    doc.head.appendChild(canonicalLink);
+  }
+}
+
+/**
+ * Injects a canonical link into the document head if one doesn't already exist.
+ * Constructs the canonical URL based on the document's base URL and current language.
+ * Uses translated slug from URL map if available.
+ */
+function injectCanonicalLinkIfMissing(
+  doc: Document, 
+  currentLanguage: string
+): void {
+  // Ensure head exists
+  if (!doc.head) {
+    const head = doc.createElement('head');
+    if (doc.documentElement) {
+      doc.documentElement.insertBefore(head, doc.documentElement.firstChild);
+    } else {
+      return; // Can't inject without documentElement
+    }
+  }
+
+  // Check if canonical link already exists
+  const existingCanonical = doc.head.querySelector('link[rel="canonical"]');
+  if (existingCanonical) return;
+
+  // Try to get the current URL from various sources
+  let baseUrl = '';
+  
+  // Try doc.baseURI
+  if (!baseUrl || baseUrl === 'about:blank' || baseUrl === 'about:srcdoc') {
+    baseUrl = doc.baseURI || '';
+  }
+  
+  // Try window.location (browser context)
+  if (!baseUrl || baseUrl === 'about:blank' || baseUrl === 'about:srcdoc') {
+    try {
+      if (typeof window !== 'undefined' && window.location) {
+        baseUrl = window.location.href;
+      }
+    } catch {
+      // In server-side context, we might not have window.location
+    }
+  }
+  
+  // Try to extract from og:url meta tag
+  if (!baseUrl || baseUrl === 'about:blank' || baseUrl === 'about:srcdoc') {
+    try {
+      const ogUrl = doc.querySelector('meta[property="og:url"]');
+      if (ogUrl) {
+        const content = ogUrl.getAttribute('content');
+        if (content && (content.startsWith('http://') || content.startsWith('https://'))) {
+          baseUrl = content;
+        }
+      }
+    } catch {
+      // Ignore errors
+    }
+  }
+
+  // If we still don't have a URL, construct a relative canonical based on language
+  // This ensures we always inject a canonical if we have a language
+  if (!baseUrl || baseUrl === 'about:blank' || baseUrl === 'about:srcdoc') {
+    try {
+      // Use language prefix for canonical
+      const canonicalPath = `/${currentLanguage}`;
+      const normalizedPath = normalizeUrlPath(canonicalPath);
+      
+      const canonicalLink = doc.createElement('link');
+      canonicalLink.setAttribute('rel', 'canonical');
+      canonicalLink.setAttribute('href', normalizedPath);
+      insertCanonicalLink(doc, canonicalLink);
+    } catch {
+      // If this fails, don't inject
+    }
+    return;
+  }
+
+  try {
+    const url = new URL(baseUrl);
+    let oldPath = url.pathname || '/';
+    
+    // If the URL is just localhost with no meaningful path, try to extract from og:url
+    if ((url.hostname === 'localhost' || url.hostname === '127.0.0.1') && oldPath === '/') {
+      try {
+        const ogUrl = doc.querySelector('meta[property="og:url"]');
+        if (ogUrl) {
+          const ogContent = ogUrl.getAttribute('content');
+          if (ogContent && (ogContent.startsWith('http://') || ogContent.startsWith('https://'))) {
+            const ogUrlObj = new URL(ogContent);
+            oldPath = ogUrlObj.pathname || '/';
+            // Update the base URL hostname and protocol from og:url if it's more meaningful
+            if (ogUrlObj.hostname !== 'localhost' && ogUrlObj.hostname !== '127.0.0.1') {
+              url.hostname = ogUrlObj.hostname;
+              url.protocol = ogUrlObj.protocol;
+            }
+          }
+        }
+      } catch {
+        // Ignore errors
+      }
+    }
+    
+    // Use language injection for canonical path
+    const canonicalPath = injectLanguageIntoCanonicalPath(oldPath, currentLanguage);
+    
+    // Normalize path (remove trailing slash except root)
+    const normalizedPath = normalizeUrlPath(canonicalPath);
+    url.pathname = normalizedPath;
+    
+    // Remove frx_from_lang parameter if present
+    url.searchParams.delete('frx_from_lang');
+    
+    const canonicalUrl = url.toString();
+    
+    // Create and inject the canonical link
+    const canonicalLink = doc.createElement('link');
+    canonicalLink.setAttribute('rel', 'canonical');
+    canonicalLink.setAttribute('href', canonicalUrl);
+    insertCanonicalLink(doc, canonicalLink);
+  } catch {
+    // If URL construction fails, try relative path approach
+    try {
+      // Extract pathname from baseUrl if it's a full URL
+      let path = '/';
+      if (baseUrl.startsWith('http://') || baseUrl.startsWith('https://')) {
+        const url = new URL(baseUrl);
+        path = url.pathname || '/';
+      } else if (baseUrl.startsWith('/')) {
+        path = baseUrl.split('?')[0].split('#')[0];
+      }
+      
+      // Use language injection for canonical path
+      const canonicalPath = injectLanguageIntoCanonicalPath(path, currentLanguage);
+      
+      const normalizedPath = normalizeUrlPath(canonicalPath);
+      
+      const canonicalLink = doc.createElement('link');
+      canonicalLink.setAttribute('rel', 'canonical');
+      canonicalLink.setAttribute('href', normalizedPath);
+      insertCanonicalLink(doc, canonicalLink);
+    } catch {
+      // Final fallback: inject a simple language-based canonical
+      try {
+        const canonicalLink = doc.createElement('link');
+        canonicalLink.setAttribute('rel', 'canonical');
+        canonicalLink.setAttribute('href', `/${currentLanguage}`);
+        insertCanonicalLink(doc, canonicalLink);
+      } catch {
+        // If this also fails, don't inject
+      }
+    }
+  }
+}
+
+/**
  * Rewrite canonical href so it includes the current language in the path.
  * Also strips frx_from_lang parameter and removes trailing slashes.
+ * Uses translated slug from URL map if available.
  * Works for:
  *   - absolute URLs: "https://www.cloudflare.com/" -> "https://www.cloudflare.com/fr-ca"
  *   - relative / proxy URLs: "/proxy/cloudflare.com/" -> "/proxy/cloudflare.com/fr-ca"
@@ -428,7 +610,7 @@ async function upsertPlaceholder(raw: string | undefined | null, maps: TextMaps,
   }
 }
 
-export async function createDocument(html: string): Promise<Document> {
+export async function createDocument(html: string, url?: string): Promise<Document> {
   // IMPORTANT: Do not remove this because this cannot load in the frontend.
   if (typeof window !== 'undefined' && window.document && !(globalThis as any).IS_UNIT_TEST) {
     return window.document
@@ -448,8 +630,10 @@ export async function createDocument(html: string): Promise<Document> {
   });
 
   // Pass the configured virtual console in the JSDOM options
+  // If url is provided, set it as the url option to ensure baseURI is set
   const dom = new JSDOM(html, {
     virtualConsole,
+    url: url || 'http://localhost',
   });
 
   return dom.window.document;
@@ -863,6 +1047,11 @@ export async function extractStrings(
   // process head and body
   if (doc.head) for (const n of Array.from(doc.head.childNodes)) await walk(n)
   if (doc.body) for (const n of Array.from(doc.body.childNodes)) await walk(n)
+
+  // Inject canonical link if it doesn't exist
+  if (mutate && doc.head && currentLanguage) {
+    injectCanonicalLinkIfMissing(doc, currentLanguage)
+  }
 
   return {
     modifiedHtml: doc.documentElement.outerHTML, // unchanged visually if mutate=false
