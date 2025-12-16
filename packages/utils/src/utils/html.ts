@@ -766,20 +766,11 @@ async function processAttributes(
     // Special case: keep og:locale in sync with the translated language,
     // but never treat it as translatable content.
     if (metaKey === 'og:locale') {
-      if (mutate) {
-        // Use currentLanguage if available, otherwise use originLanguage
-        const langToUse = currentLanguage || config.originLanguage;
-        if (langToUse) {
-          // For origin language, don't pass existing content to avoid reusing wrong region
-          // Pass null so it uses the origin language's region or defaults
-          const existingOgLocaleForMapping = currentLanguage ? content : null;
-          const mapped = languageToOgLocale(langToUse, existingOgLocaleForMapping, config);
-          if (mapped && mapped !== content) {
-            el.setAttribute('content', mapped);
-            if (currentLanguage) {
-              stampTranslated(el, currentLanguage);
-            }
-          }
+      if (mutate && currentLanguage) {
+        const mapped = languageToOgLocale(currentLanguage, content, config);
+        if (mapped && mapped !== content) {
+          el.setAttribute('content', mapped);
+          stampTranslated(el, currentLanguage);
         }
       }
       // Always return here: og:locale is not part of the text map.
@@ -1263,10 +1254,11 @@ function languageToOgLocale(
   const base = parts[0];
   let region: string | undefined;
 
-  // 1) Use region from the language itself, if present (fr-ca → ca)
+  // 1) Use region from the language itself, if present (fr-ca → ca, nl-nl → nl)
   if (parts.length > 1) {
     const last = parts[parts.length - 1];
-    if (last.length === 2 && last !== base) {
+    if (last.length === 2) {
+      // Allow same region as base (e.g., nl-nl → nl_NL)
       region = last;
     }
   }
@@ -1289,7 +1281,8 @@ function languageToOgLocale(
       // same base (fr, en, etc.)
       if (lParts[0] === base && lParts.length > 1) {
         const candidate = lParts[lParts.length - 1];
-        if (candidate.length === 2 && candidate !== base) {
+        if (candidate.length === 2) {
+          // Allow same region as base (e.g., nl-nl → nl_NL)
           region = candidate;
           break;
         }
@@ -1314,7 +1307,7 @@ function languageToOgLocale(
     }
   }
 
-  // 4) Last-resort sensible defaults (your CA-centric behavior)
+  // 4) Last-resort sensible defaults
   if (!region) {
     switch (base) {
       case 'en':
@@ -1328,6 +1321,15 @@ function languageToOgLocale(
         break;
       case 'pt':
         region = 'br';
+        break;
+      case 'nl':
+        region = 'nl';
+        break;
+      case 'zh':
+        region = 'cn';
+        break;
+      case 'tw':
+        region = 'tw';
         break;
       default:
         // If we don't know, don't force an invalid OG locale
