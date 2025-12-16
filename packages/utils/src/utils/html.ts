@@ -232,11 +232,8 @@ function insertCanonicalLink(doc: Document, canonicalLink: HTMLLinkElement): voi
  */
 function injectCanonicalLinkIfMissing(
   doc: Document, 
-  currentLanguage?: string,
-  originLanguage?: string | null
+  currentLanguage: string
 ): void {
-  // Normalize originLanguage - convert null/empty to undefined for consistent handling
-  const normalizedOriginLanguage = originLanguage && originLanguage.trim() ? originLanguage.trim() : undefined;
   // Ensure head exists
   if (!doc.head) {
     const head = doc.createElement('head');
@@ -289,9 +286,8 @@ function injectCanonicalLinkIfMissing(
   // This ensures we always inject a canonical if we have a language
   if (!baseUrl || baseUrl === 'about:blank' || baseUrl === 'about:srcdoc') {
     try {
-      // Use current language if available, otherwise use origin language, otherwise use root
-      const langToUse = currentLanguage || normalizedOriginLanguage;
-      const canonicalPath = langToUse ? `/${langToUse}` : '/';
+      // Use language prefix for canonical
+      const canonicalPath = `/${currentLanguage}`;
       const normalizedPath = normalizeUrlPath(canonicalPath);
       
       const canonicalLink = doc.createElement('link');
@@ -330,11 +326,7 @@ function injectCanonicalLinkIfMissing(
     }
     
     // Use language injection for canonical path
-    // If currentLanguage is provided, use it; otherwise use originLanguage; otherwise use original path
-    const langToUse = currentLanguage || normalizedOriginLanguage;
-    const canonicalPath = langToUse 
-      ? injectLanguageIntoCanonicalPath(oldPath, langToUse)
-      : normalizeUrlPath(oldPath);
+    const canonicalPath = injectLanguageIntoCanonicalPath(oldPath, currentLanguage);
     
     // Normalize path (remove trailing slash except root)
     const normalizedPath = normalizeUrlPath(canonicalPath);
@@ -363,11 +355,7 @@ function injectCanonicalLinkIfMissing(
       }
       
       // Use language injection for canonical path
-      // If currentLanguage is provided, use it; otherwise use originLanguage; otherwise use original path
-      const langToUse = currentLanguage || normalizedOriginLanguage;
-      const canonicalPath = langToUse 
-        ? injectLanguageIntoCanonicalPath(path, langToUse)
-        : normalizeUrlPath(path);
+      const canonicalPath = injectLanguageIntoCanonicalPath(path, currentLanguage);
       
       const normalizedPath = normalizeUrlPath(canonicalPath);
       
@@ -376,12 +364,11 @@ function injectCanonicalLinkIfMissing(
       canonicalLink.setAttribute('href', normalizedPath);
       insertCanonicalLink(doc, canonicalLink);
     } catch {
-      // Final fallback: inject a simple canonical
+      // Final fallback: inject a simple language-based canonical
       try {
-        const langToUse = currentLanguage || normalizedOriginLanguage;
         const canonicalLink = doc.createElement('link');
         canonicalLink.setAttribute('rel', 'canonical');
-        canonicalLink.setAttribute('href', langToUse ? `/${langToUse}` : '/');
+        canonicalLink.setAttribute('href', `/${currentLanguage}`);
         insertCanonicalLink(doc, canonicalLink);
       } catch {
         // If this also fails, don't inject
@@ -914,7 +901,8 @@ export async function extractStrings(
   config: Configuration,
   compress = true,
   injectDataKey = true,
-  currentLanguage?: string
+  currentLanguage?: string,
+  getUrlMapsForLanguage?: (lang: string) => Promise<{ urlPathMap?: Record<string, string>; reverseUrlPathMap?: Record<string, string> } | null>
 ): Promise<ExtractionResult & { styleMap: MasterStyleMap }> {
   const maps: TextMaps = { forward: {}, reverse: {} }
   const masterStyleMap: MasterStyleMap = {}
@@ -1070,24 +1058,677 @@ export async function extractStrings(
   if (doc.head) for (const n of Array.from(doc.head.childNodes)) await walk(n)
   if (doc.body) for (const n of Array.from(doc.body.childNodes)) await walk(n)
 
-  // Inject canonical link if it doesn't exist (for both translated and origin language)
-  if (mutate && doc.head) {
-    injectCanonicalLinkIfMissing(doc, currentLanguage, config.originLanguage)
+  // Inject canonical link if it doesn't exist
+  if (mutate && doc.head && currentLanguage) {
+    injectCanonicalLinkIfMissing(doc, currentLanguage)
   }
 
-  // Update HTML lang attribute to use origin language if currentLanguage is undefined
-  if (mutate && doc.documentElement) {
-    const langToUse = currentLanguage || config.originLanguage;
-    if (langToUse) {
-      // Convert language code format (e.g., en-CA stays as en-CA for HTML lang attribute)
-      setDocumentLang(doc, langToUse);
+  // Inject hreflang tags for all languages (always, regardless of useTranslatedUrls)
+  // IMPORTANT: Capture the canonical URL BEFORE injecting hreflang tags, as it might be modified
+  // by injectCanonicalLinkIfMissing or other code
+  let canonicalHrefBeforeHreflang: string | null = null;
+  if (mutate && doc.head) {
+    const canonicalBefore = doc.head.querySelector('link[rel="canonical"]');
+    if (canonicalBefore) {
+      canonicalHrefBeforeHreflang = canonicalBefore.getAttribute('href');
     }
+  }
+  
+  if (mutate && doc.head && currentLanguage && config.languages && config.originLanguage) {
+    await injectHreflangTags(
+      doc,
+      currentLanguage,
+      config.languages,
+      config.originLanguage,
+      config,
+      getUrlMapsForLanguage,
+      canonicalHrefBeforeHreflang  // Pass the captured canonical
+    )
+  }
+
+  // Sync Yoast schema graph with already-translated content
+  if (mutate && doc.head) {
+    await syncYoastSchemaGraph(doc, currentLanguage, config, getUrlMapsForLanguage)
   }
 
   return {
     modifiedHtml: doc.documentElement.outerHTML, // unchanged visually if mutate=false
     textMap: maps.forward,
     styleMap: masterStyleMap,
+  }
+}
+
+/**
+ * Injects hreflang tags for all supported languages into the document head.
+ * Each hreflang tag points to the canonical URL for that language.
+ * Uses all languages from config (originLanguage + config.languages), not just page-specific languages.
+ * If URL maps are provided and useTranslatedUrls is enabled, uses translated slugs for each language.
+ * 
+ * @param getUrlMapsForLanguage - Optional async function to get URL maps for a specific language.
+ *                                 Should return {urlPathMap, reverseUrlPathMap} for that language.
+ */
+export async function injectHreflangTags(
+  doc: Document,
+  currentLanguage: string,
+  allLanguages: string[],
+  originLanguage: string,
+  config?: Configuration,
+  getUrlMapsForLanguage?: (lang: string) => Promise<{ urlPathMap?: Record<string, string>; reverseUrlPathMap?: Record<string, string> } | null>,
+  capturedCanonicalHref?: string | null  // Optional: use this instead of reading from DOM
+): Promise<void> {
+  if (!doc.head) return;
+  
+  // Get all languages from config (originLanguage + config.languages)
+  const configLanguages: string[] = [];
+  if (config?.originLanguage) {
+    configLanguages.push(config.originLanguage);
+  }
+  if (config?.languages && Array.isArray(config.languages)) {
+    for (const lang of config.languages) {
+      if (lang && !configLanguages.includes(lang)) {
+        configLanguages.push(lang);
+      }
+    }
+  }
+  
+  // Fallback to provided allLanguages if config doesn't have languages
+  const languagesToUse = configLanguages.length > 0 ? configLanguages : (allLanguages || []);
+  const originLangToUse = config?.originLanguage || originLanguage;
+  
+  if (!languagesToUse || languagesToUse.length === 0) return;
+
+  // Remove existing hreflang tags to avoid duplicates
+  const existingHreflang = doc.head.querySelectorAll('link[rel="alternate"][hreflang]');
+  existingHreflang.forEach(link => link.remove());
+
+  // Get base URL
+  let baseUrl = '';
+  if (doc.baseURI && doc.baseURI !== 'about:blank' && doc.baseURI !== 'about:srcdoc') {
+    baseUrl = doc.baseURI;
+  } else {
+    try {
+      if (typeof window !== 'undefined' && window.location) {
+        baseUrl = window.location.origin;
+      }
+    } catch {
+      // Server-side context
+    }
+  }
+
+  if (!baseUrl) {
+    // Try to extract from og:url
+    try {
+      const ogUrl = doc.querySelector('meta[property="og:url"]');
+      if (ogUrl) {
+        const content = ogUrl.getAttribute('content');
+        if (content && (content.startsWith('http://') || content.startsWith('https://'))) {
+          const url = new URL(content);
+          baseUrl = url.origin;
+        }
+      }
+    } catch {
+      // Ignore errors
+    }
+  }
+
+  if (!baseUrl) return;
+
+  // Get current path from canonical link, og:url, or baseURI
+  let currentPath = '/';
+  
+  // Try canonical link first - use captured canonical if provided (to avoid reading modified canonical)
+  let canonicalHref: string | null = null;
+  if (capturedCanonicalHref !== undefined) {
+    canonicalHref = capturedCanonicalHref;
+  } else {
+    const canonicalLink = doc.head.querySelector('link[rel="canonical"]');
+    if (canonicalLink) {
+      canonicalHref = canonicalLink.getAttribute('href');
+    }
+  }
+  
+  if (canonicalHref) {
+    try {
+      const url = new URL(canonicalHref, baseUrl);
+      currentPath = url.pathname || '/';
+    } catch {
+      // If href is relative, use it directly
+      if (canonicalHref.startsWith('/')) {
+        currentPath = canonicalHref.split('?')[0].split('#')[0];
+      }
+    }
+  }
+  
+  // Fallback to og:url
+  if (currentPath === '/') {
+    const ogUrl = doc.querySelector('meta[property="og:url"]');
+    if (ogUrl) {
+      const content = ogUrl.getAttribute('content');
+      if (content) {
+        try {
+          const url = new URL(content);
+          currentPath = url.pathname || '/';
+        } catch {
+          if (content.startsWith('/')) {
+            currentPath = content.split('?')[0].split('#')[0];
+          }
+        }
+      }
+    }
+  }
+  
+  // Fallback to baseURI
+  if (currentPath === '/' && doc.baseURI) {
+    try {
+      const url = new URL(doc.baseURI);
+      currentPath = url.pathname || '/';
+    } catch {
+      // Ignore
+    }
+  }
+
+  // Normalize current path (remove language prefix if present to get origin path)
+  const pathSegs = currentPath.split('/').filter(Boolean);
+  const isLangLike = (s: string) => /^[a-z]{2}(?:-[a-z0-9]{2,})?$/i.test(s);
+  if (pathSegs.length > 0 && isLangLike(pathSegs[0])) {
+    // Remove language prefix to get origin path
+    currentPath = '/' + pathSegs.slice(1).join('/');
+    if (currentPath === '/') currentPath = '/';
+  }
+
+  // Create hreflang tags for all languages (including origin)
+  const allLangs = [originLangToUse, ...languagesToUse.filter(l => l !== originLangToUse)];
+  const seen = new Set<string>();
+  const hreflangLinks: HTMLLinkElement[] = [];
+
+  // Helper to normalize path for URL map lookup (same as normalizeRequestPath)
+  const normalizeForMap = (path: string): string => {
+    let p = path || '/';
+    // URL decode first
+    try {
+      p = decodeURIComponent(p);
+    } catch {
+      // If decoding fails, use as-is
+    }
+    if (!p.startsWith('/')) p = '/' + p;
+    if (p !== '/') p = p.replace(/\/+$/, '');
+    return p;
+  };
+
+  // Determine the origin path ONCE before the loop (using current language's reverse map)
+  // This ensures all languages use the same origin path
+  // Start with currentPath (which already has language prefix removed)
+  let globalOriginPath = normalizeForMap(currentPath);
+  
+  // First, try to get the path from canonical URL (which may have the translated slug)
+  const canonicalForOrigin = doc.head.querySelector('link[rel="canonical"]');
+  let canonicalPathWithoutLang = globalOriginPath;
+  
+  if (canonicalForOrigin) {
+    const canonicalHref = canonicalForOrigin.getAttribute('href');
+    if (canonicalHref) {
+      try {
+        const canonicalUrl = new URL(canonicalHref, baseUrl);
+        let canonicalPath = canonicalUrl.pathname || '/';
+        
+        // Remove language prefix from canonical path
+        const canonicalSegs = canonicalPath.split('/').filter(Boolean);
+        const isLangLike = (s: string) => /^[a-z]{2}(?:-[a-z0-9]{2,})?$/i.test(s);
+        if (canonicalSegs.length > 0 && isLangLike(canonicalSegs[0])) {
+          canonicalPath = '/' + canonicalSegs.slice(1).join('/');
+          if (canonicalPath === '/') canonicalPath = '/';
+        }
+        
+        // Normalize the canonical path (URL decode and normalize)
+        canonicalPathWithoutLang = normalizeForMap(canonicalPath);
+      } catch {
+        // Ignore URL parsing errors
+      }
+    }
+  }
+  
+  // Use the canonical path (which might be a translated slug) as the starting point
+  globalOriginPath = canonicalPathWithoutLang;
+  
+  // Get origin path using current language's reverse map
+  // This converts the translated slug back to the origin path
+  if (config?.useTranslatedUrls && getUrlMapsForLanguage) {
+    try {
+      const currentLangMaps = await getUrlMapsForLanguage(currentLanguage);
+      
+      if (currentLangMaps?.reverseUrlPathMap) {
+        // Try to find the origin path using the reverse map
+        const reverseLookup = currentLangMaps.reverseUrlPathMap[canonicalPathWithoutLang];
+        
+        if (reverseLookup) {
+          // Found origin path via reverse map - this is the TRUE origin path
+          globalOriginPath = normalizeForMap(reverseLookup);
+        } else {
+          // If not found, the path might already be the origin path
+          // Check if it exists in the forward map (if it does, it's an origin path)
+          if (currentLangMaps.urlPathMap && currentLangMaps.urlPathMap[canonicalPathWithoutLang]) {
+            // This is already an origin path
+            globalOriginPath = normalizeForMap(canonicalPathWithoutLang);
+          } else {
+            // Path not found in maps - might be a new page or error
+            // But we should still use it as-is (it might be the origin path)
+            globalOriginPath = normalizeForMap(canonicalPathWithoutLang);
+          }
+        }
+      } else {
+        // No reverse map available, use canonical path as-is
+        globalOriginPath = normalizeForMap(canonicalPathWithoutLang);
+      }
+    } catch {
+      // On error, use canonical path as-is
+      globalOriginPath = normalizeForMap(canonicalPathWithoutLang);
+    }
+  } else {
+    // useTranslatedUrls is false or no callback - use canonical path as-is
+    globalOriginPath = normalizeForMap(canonicalPathWithoutLang);
+  }
+  
+  // Final safeguard: ensure globalOriginPath is normalized
+  globalOriginPath = normalizeForMap(globalOriginPath);
+
+  for (const lang of allLangs) {
+    if (!lang || seen.has(lang.toLowerCase())) continue;
+    seen.add(lang.toLowerCase());
+
+    try {
+      // Use the global origin path for all languages - ensure it's normalized
+      const originPath = normalizeForMap(globalOriginPath);
+      
+      let targetPath: string;
+      
+      // For origin language, always use the origin path directly (no URL map lookup, no translated slug)
+      if (lang.toLowerCase() === originLangToUse.toLowerCase()) {
+        // Origin language: use origin path with language prefix (or without if origin language is hidden)
+        // The originPath should already be the clean origin path (e.g., /compare-boast)
+        const langPath = injectLanguageIntoCanonicalPath(originPath, lang);
+        targetPath = normalizeUrlPath(langPath);
+      }
+      // If useTranslatedUrls is false, always use origin path with language prefix for all other languages
+      else if (!config?.useTranslatedUrls) {
+        const langPath = injectLanguageIntoCanonicalPath(originPath, lang);
+        targetPath = normalizeUrlPath(langPath);
+      } else {
+        // For other languages, get URL maps and use translated slug if available
+        let langUrlPathMap: Record<string, string> | undefined;
+        if (getUrlMapsForLanguage) {
+          try {
+            const langMaps = await getUrlMapsForLanguage(lang);
+            langUrlPathMap = langMaps?.urlPathMap;
+          } catch {
+            // If getting URL maps fails, langUrlPathMap remains undefined
+          }
+        }
+        
+        // Use translated slug if available, otherwise fall back to origin path with language prefix
+        if (langUrlPathMap && langUrlPathMap[originPath]) {
+          // Use the translated slug for this specific language
+          targetPath = langUrlPathMap[originPath];
+          targetPath = normalizeUrlPath(targetPath);
+        } else {
+          // No translated slug available for this language, use origin path with language prefix
+          const langPath = injectLanguageIntoCanonicalPath(originPath, lang);
+          targetPath = normalizeUrlPath(langPath);
+        }
+      }
+      
+      // Ensure targetPath is set (should never be undefined at this point)
+      if (!targetPath) {
+        continue; // Skip this language if targetPath is not set
+      }
+      
+      let hreflangUrl: string;
+      try {
+        const url = new URL(baseUrl);
+        url.pathname = targetPath;
+        hreflangUrl = url.toString();
+      } catch {
+        // Fallback: construct manually
+        const cleanBase = baseUrl.replace(/\/$/, '');
+        hreflangUrl = `${cleanBase}${targetPath}`;
+      }
+
+      const link = doc.createElement('link');
+      link.setAttribute('rel', 'alternate');
+      link.setAttribute('hreflang', lang.toLowerCase());
+      link.setAttribute('href', hreflangUrl);
+      
+      hreflangLinks.push(link);
+    } catch {
+      // Skip this language if URL construction fails
+    }
+  }
+
+  // Add x-default pointing to origin language
+  // x-default should always use the origin path (not translated slug)
+  try {
+    // Use the same global origin path determined above
+    const originPathForDefault = globalOriginPath;
+    const originLangPath = injectLanguageIntoCanonicalPath(originPathForDefault, originLangToUse);
+    const normalizedOriginPath = normalizeUrlPath(originLangPath);
+    let defaultUrl: string;
+    try {
+      const url = new URL(baseUrl);
+      url.pathname = normalizedOriginPath;
+      defaultUrl = url.toString();
+    } catch {
+      const cleanBase = baseUrl.replace(/\/$/, '');
+      defaultUrl = `${cleanBase}${normalizedOriginPath}`;
+    }
+
+    const defaultLink = doc.createElement('link');
+    defaultLink.setAttribute('rel', 'alternate');
+    defaultLink.setAttribute('hreflang', 'x-default');
+    defaultLink.setAttribute('href', defaultUrl);
+    hreflangLinks.push(defaultLink);
+  } catch {
+    // Skip x-default if construction fails
+  }
+
+  // Insert all hreflang links together after canonical link
+  if (hreflangLinks.length > 0) {
+    const canonical = doc.head.querySelector('link[rel="canonical"]');
+    if (canonical) {
+      // Insert all hreflang links after canonical
+      let insertAfter: Element = canonical;
+      for (const link of hreflangLinks) {
+        if (insertAfter.nextSibling) {
+          doc.head.insertBefore(link, insertAfter.nextSibling);
+        } else {
+          doc.head.appendChild(link);
+        }
+        insertAfter = link;
+      }
+    } else {
+      // No canonical, try to insert after title or append
+      const titleTag = doc.head.querySelector('title');
+      if (titleTag) {
+        let insertAfter: Element = titleTag;
+        for (const link of hreflangLinks) {
+          if (insertAfter.nextSibling) {
+            doc.head.insertBefore(link, insertAfter.nextSibling);
+          } else {
+            doc.head.appendChild(link);
+          }
+          insertAfter = link;
+        }
+      } else {
+        // No title either, just append all
+        for (const link of hreflangLinks) {
+          doc.head.appendChild(link);
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Helper function to normalize path for URL map lookup
+ */
+function normalizeForMapLookup(path: string): string {
+  let p = path || '/';
+  try {
+    p = decodeURIComponent(p);
+  } catch {
+    // If decoding fails, use as-is
+  }
+  if (!p.startsWith('/')) p = '/' + p;
+  if (p !== '/') p = p.replace(/\/+$/, '');
+  return p;
+}
+
+/**
+ * Recursively updates name, description, and inLanguage fields in schema objects
+ */
+function updateSchemaFieldsRecursive(
+  obj: any,
+  titleValue: string,
+  descriptionValue: string,
+  localeValue: string,
+  visited = new WeakSet()
+): void {
+  if (!obj || typeof obj !== 'object') return;
+  
+  // Prevent infinite loops with circular references
+  if (visited.has(obj)) return;
+  visited.add(obj);
+  
+  if (Array.isArray(obj)) {
+    for (const item of obj) {
+      updateSchemaFieldsRecursive(item, titleValue, descriptionValue, localeValue, visited);
+    }
+    return;
+  }
+
+  // Update name if present (only for WebPage and WebSite types typically)
+  if (titleValue && obj.name && typeof obj.name === 'string') {
+    // Only update name for WebPage, WebSite, or Organization types
+    if (obj['@type'] === 'WebPage' || obj['@type'] === 'WebSite' || obj['@type'] === 'Organization') {
+      obj.name = titleValue;
+    }
+  }
+
+  // Update description if present (only for WebPage and WebSite types typically)
+  if (descriptionValue && obj.description && typeof obj.description === 'string') {
+    // Only update description for WebPage or WebSite types
+    if (obj['@type'] === 'WebPage' || obj['@type'] === 'WebSite') {
+      obj.description = descriptionValue;
+    }
+  }
+
+  // Update inLanguage if present
+  if (localeValue && obj.inLanguage && typeof obj.inLanguage === 'string') {
+    const normalizedLocale = localeValue.replace('_', '-');
+    obj.inLanguage = normalizedLocale;
+  }
+
+  // Recursively process all properties
+  for (const key in obj) {
+    if (Object.prototype.hasOwnProperty.call(obj, key)) {
+      const value = obj[key];
+      if (value && typeof value === 'object' && value !== null) {
+        updateSchemaFieldsRecursive(value, titleValue, descriptionValue, localeValue, visited);
+      }
+    }
+  }
+}
+
+/**
+ * Recursively updates all URL fields in a schema object to use the og:url value
+ */
+function updateUrlsRecursive(
+  obj: any,
+  ogUrlValue: string,
+  baseUrlOrigin: string,
+  visited = new WeakSet()
+): void {
+  if (!obj || typeof obj !== 'object') return;
+  
+  // Prevent infinite loops with circular references
+  if (visited.has(obj)) return;
+  visited.add(obj);
+  
+  if (Array.isArray(obj)) {
+    for (const item of obj) {
+      updateUrlsRecursive(item, ogUrlValue, baseUrlOrigin, visited);
+    }
+    return;
+  }
+
+  /**
+   * Helper function to convert og:url to absolute URL if needed
+   */
+  const getAbsoluteUrl = (urlString: string): string => {
+    if (!urlString || !urlString.trim()) {
+      // If og:url is empty, return baseUrlOrigin as fallback
+      return baseUrlOrigin;
+    }
+    if (urlString.startsWith('http://') || urlString.startsWith('https://')) {
+      return urlString;
+    }
+    // If relative, make it absolute using baseUrlOrigin
+    return baseUrlOrigin + (urlString.startsWith('/') ? urlString : '/' + urlString);
+  };
+
+  const absoluteOgUrl = getAbsoluteUrl(ogUrlValue);
+
+  // Update url field if present
+  if (obj.url && typeof obj.url === 'string') {
+    obj.url = absoluteOgUrl;
+  }
+
+  // Update @id field if present (these are URLs in schema.org)
+  // @id can be full URLs or fragments like "#website" or "#breadcrumb"
+  if (obj['@id'] && typeof obj['@id'] === 'string') {
+    if (obj['@id'].startsWith('http')) {
+      // Full URL - replace with og:url (preserve fragment if present)
+      const fragment = obj['@id'].includes('#') ? '#' + obj['@id'].split('#')[1] : '';
+      obj['@id'] = absoluteOgUrl + fragment;
+    }
+    // If it's just a fragment like "#website", leave it as-is
+  }
+
+  // Update target field if present (used in potentialAction)
+  if (obj.target) {
+    if (typeof obj.target === 'string') {
+      obj.target = absoluteOgUrl;
+    } else if (Array.isArray(obj.target)) {
+      obj.target = obj.target.map((t: any) => 
+        typeof t === 'string' ? absoluteOgUrl : t
+      );
+    } else if (obj.target && typeof obj.target === 'object' && obj.target.urlTemplate) {
+      // Handle EntryPoint with urlTemplate - preserve template syntax but update base URL
+      if (typeof obj.target.urlTemplate === 'string') {
+        const urlTemplate = obj.target.urlTemplate;
+        // Extract the template part (e.g., {search_term_string})
+        const templateMatch = urlTemplate.match(/\{.*\}/);
+        if (templateMatch) {
+          const template = templateMatch[0];
+          // Replace the base URL part with og:url, keeping the template
+          obj.target.urlTemplate = absoluteOgUrl.replace(/\/$/, '') + '/?s=' + template;
+        } else {
+          obj.target.urlTemplate = absoluteOgUrl;
+        }
+      }
+    }
+  }
+
+  // Update item field if present (used in breadcrumbs)
+  if (obj.item && typeof obj.item === 'string' && obj.item.startsWith('http')) {
+    obj.item = absoluteOgUrl;
+  }
+
+  // Recursively process all properties
+  for (const key in obj) {
+    if (Object.prototype.hasOwnProperty.call(obj, key)) {
+      const value = obj[key];
+      if (value && typeof value === 'object' && value !== null) {
+        updateUrlsRecursive(value, ogUrlValue, baseUrlOrigin, visited);
+      }
+    }
+  }
+}
+
+/**
+ * Syncs Yoast schema graph JSON-LD with already-translated content.
+ * - URL: uses translated URLs for the current language
+ * - name: matches title tag
+ * - description: matches meta description (already translated)
+ * - inLanguage: matches og:locale (recursively updates all nested objects)
+ */
+export async function syncYoastSchemaGraph(
+  doc: Document,
+  currentLanguage?: string,
+  config?: Configuration,
+  getUrlMapsForLanguage?: (lang: string) => Promise<{ urlPathMap?: Record<string, string>; reverseUrlPathMap?: Record<string, string> } | null>
+): Promise<void> {
+  if (!doc.head) return;
+
+  // Get base URL origin (just the origin, not the full path)
+  let baseUrlOrigin = '';
+  if (doc.baseURI && doc.baseURI !== 'about:blank' && doc.baseURI !== 'about:srcdoc') {
+    try {
+      const url = new URL(doc.baseURI);
+      baseUrlOrigin = url.origin;
+    } catch {
+      // If parsing fails, try to extract origin from string
+      try {
+        const match = doc.baseURI.match(/^https?:\/\/[^\/]+/);
+        if (match) baseUrlOrigin = match[0];
+      } catch {
+        // Ignore
+      }
+    }
+  } else {
+    try {
+      if (typeof window !== 'undefined' && window.location) {
+        baseUrlOrigin = window.location.origin;
+      }
+    } catch {
+      // Server-side context
+    }
+  }
+
+  if (!baseUrlOrigin) {
+    // Try to extract from og:url
+    try {
+      const ogUrl = doc.querySelector('meta[property="og:url"]');
+      if (ogUrl) {
+        const content = ogUrl.getAttribute('content');
+        if (content && (content.startsWith('http://') || content.startsWith('https://'))) {
+          const url = new URL(content);
+          baseUrlOrigin = url.origin;
+        }
+      }
+    } catch {
+      // Ignore errors
+    }
+  }
+
+  if (!baseUrlOrigin) return;
+
+  // Get values from already-translated content
+  const ogUrl = doc.querySelector('meta[property="og:url"]');
+  const ogUrlValue = ogUrl?.getAttribute('content') || '';
+
+  const titleTag = doc.querySelector('title');
+  const titleValue = titleTag?.textContent?.trim() || '';
+
+  const metaDescription = doc.querySelector('meta[name="description"]');
+  const descriptionValue = metaDescription?.getAttribute('content') || '';
+
+  const ogLocale = doc.querySelector('meta[property="og:locale"]');
+  const localeValue = ogLocale?.getAttribute('content') || '';
+
+  const schemaScripts = Array.from(doc.querySelectorAll('script[type="application/ld+json"].yoast-schema-graph'));
+  
+  for (const script of schemaScripts) {
+    try {
+      const content = script.textContent || '';
+      if (!content.trim()) continue;
+
+      const schema = JSON.parse(content);
+      if (!schema || !schema['@graph'] || !Array.isArray(schema['@graph'])) continue;
+
+      // Recursively update all URLs to use og:url value
+      if (ogUrlValue) {
+        updateUrlsRecursive(schema, ogUrlValue, baseUrlOrigin);
+      }
+
+      // Recursively update name, description, and inLanguage fields throughout the entire schema
+      if (titleValue || descriptionValue || localeValue) {
+        updateSchemaFieldsRecursive(schema, titleValue, descriptionValue, localeValue);
+      }
+
+      // Update the script content
+      script.textContent = JSON.stringify(schema);
+    } catch (error) {
+      // If parsing or updating fails, leave the script as-is
+    }
   }
 }
 
@@ -1288,7 +1929,8 @@ function languageToOgLocale(
   // 1) Use region from the language itself, if present (fr-ca → ca)
   if (parts.length > 1) {
     const last = parts[parts.length - 1];
-    if (last.length === 2 && last !== base) {
+    if (last.length === 2) {
+      // Allow same region as base (e.g., nl-nl → nl_NL)
       region = last;
     }
   }
@@ -1340,10 +1982,10 @@ function languageToOgLocale(
   if (!region) {
     switch (base) {
       case 'en':
-        region = 'ca';
+        region = 'us';
         break;
       case 'fr':
-        region = 'ca';
+        region = 'fr';
         break;
       case 'es':
         region = 'es';
@@ -1351,9 +1993,21 @@ function languageToOgLocale(
       case 'pt':
         region = 'br';
         break;
+      case 'nl':
+        region = 'nl';
+        break;
+      case 'de':
+        region = 'de';
+        break;
+      case 'it':
+        region = 'it';
+        break;
+      case 'pl':
+        region = 'pl';
+        break;
       default:
-        // If we don't know, don't force an invalid OG locale
-        return null;
+        // If we don't know, use the base language code as region (e.g., "ja" → "ja_JA")
+        region = base;
     }
   }
 
