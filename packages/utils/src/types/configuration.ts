@@ -13,6 +13,7 @@ export interface Configuration {
     keyFilters: Filter | null;
     languageAvailability: LanguageAvailabilityPayload | null;
     useTranslatedUrls: boolean;
+    showOriginLanguageCode: boolean;
     createdAt: string | null;
     lastModifiedAt: string | null;
 }

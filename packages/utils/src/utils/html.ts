@@ -86,17 +86,22 @@ export const PLACEHOLDER_TAG_RE = /<(?:sty|href|excl)\d+\b[^>]*>/i;
 /**
  * Injects the language segment into a path for canonical URLs.
  *
- * Examples (lang = "fr-ca"):
+ * Examples (lang = "fr-ca", skipPrefix = false):
  *   "/"                          -> "/fr-ca"
  *   "/contact"                   -> "/fr-ca/contact"
  *   "/fr/contact"                -> "/fr-ca/contact"
  *   "/fr-ca/contact"             -> "/fr-ca/contact" (no change)
  *   "/proxy/cloudflare.com/"     -> "/proxy/cloudflare.com/fr-ca/"
  *   "/proxy/cloudflare.com/en/"  -> "/proxy/cloudflare.com/fr-ca/"
+ * 
+ * Examples (lang = "en", skipPrefix = true):
+ *   "/"                          -> "/"
+ *   "/contact"                   -> "/contact"
+ *   "/en/contact"                -> "/contact" (strips existing lang prefix)
  */
-function injectLanguageIntoCanonicalPath(path: string, lang: string): string {
+function injectLanguageIntoCanonicalPath(path: string, lang: string, skipPrefix = false): string {
   const lowerLang = (lang || '').toLowerCase().trim();
-  if (!lowerLang) return path;
+  if (!lowerLang && !skipPrefix) return path;
 
   if (!path) path = '/';
 
@@ -104,9 +109,7 @@ function injectLanguageIntoCanonicalPath(path: string, lang: string): string {
   let basePath = path.replace(/\/{2,}/g, '/');
   if (!basePath.startsWith('/')) basePath = '/' + basePath;
 
-  // Always remove trailing slash (except root) - canonical URLs should not have trailing slashes
-
-  // Drop trailing slash for segment logic (we’ll restore if needed)
+  // Drop trailing slash for segment logic (we'll restore if needed)
   let work = basePath;
   if (work.length > 1 && work.endsWith('/')) {
     work = work.slice(0, -1);
@@ -115,6 +118,20 @@ function injectLanguageIntoCanonicalPath(path: string, lang: string): string {
   const segs = work.split('/').filter(Boolean);
   const isLangLike = (s: string) =>
     /^[a-z]{2}(?:-[a-z0-9]{2,})?$/.test((s || '').toLowerCase());
+
+  // If skipPrefix, just return normalized path without language
+  if (skipPrefix) {
+    if (!segs.length) return '/';
+    // Strip existing language prefix if present
+    if (segs[0] === 'proxy' && segs.length >= 2) {
+      const host = segs[1];
+      const rest = segs.slice(2);
+      const newRest = rest.length && isLangLike(rest[0]) ? rest.slice(1) : rest;
+      return newRest.length ? '/' + ['proxy', host, ...newRest].join('/') : '/' + ['proxy', host].join('/');
+    }
+    const rest = segs.length && isLangLike(segs[0]) ? segs.slice(1) : segs;
+    return rest.length ? '/' + rest.join('/') : '/';
+  }
 
   // Root: just "/"
   if (!segs.length) {
@@ -174,7 +191,7 @@ function stripFrxFromLang(urlString: string): string {
       .replace(/[?&]frx_from_lang=[^&"'\s]*/g, '')
       // Match parameter with just equals: ?frx_from_lang= or &frx_from_lang=
       .replace(/[?&]frx_from_lang=/g, '');
-    
+
     // Clean up any trailing ? or = that might be left
     result = result.replace(/[?=&]+$/, '');
     // Remove trailing ? if it's the last character
@@ -212,7 +229,7 @@ function insertCanonicalLink(doc: Document, canonicalLink: HTMLLinkElement): voi
     }
     return;
   }
-  
+
   // If no title, try to insert after charset or viewport meta tags
   const charset = doc.head.querySelector('meta[charset]');
   const viewport = doc.head.querySelector('meta[name="viewport"]');
@@ -229,10 +246,12 @@ function insertCanonicalLink(doc: Document, canonicalLink: HTMLLinkElement): voi
  * Injects a canonical link into the document head if one doesn't already exist.
  * Constructs the canonical URL based on the document's base URL and current language.
  * Uses translated slug from URL map if available.
+ * Respects showOriginLanguageCode config.
  */
 function injectCanonicalLinkIfMissing(
-  doc: Document, 
-  currentLanguage: string
+  doc: Document,
+  currentLanguage: string,
+  config?: Configuration
 ): void {
   // Ensure head exists
   if (!doc.head) {
@@ -248,14 +267,19 @@ function injectCanonicalLinkIfMissing(
   const existingCanonical = doc.head.querySelector('link[rel="canonical"]');
   if (existingCanonical) return;
 
+  // Determine if we should skip language prefix
+  const isOriginLang = !!(currentLanguage && config?.originLanguage &&
+    currentLanguage.toLowerCase() === config.originLanguage.toLowerCase());
+  const skipLangPrefix = isOriginLang && config?.showOriginLanguageCode === false;
+
   // Try to get the current URL from various sources
   let baseUrl = '';
-  
+
   // Try doc.baseURI
   if (!baseUrl || baseUrl === 'about:blank' || baseUrl === 'about:srcdoc') {
     baseUrl = doc.baseURI || '';
   }
-  
+
   // Try window.location (browser context)
   if (!baseUrl || baseUrl === 'about:blank' || baseUrl === 'about:srcdoc') {
     try {
@@ -266,7 +290,7 @@ function injectCanonicalLinkIfMissing(
       // In server-side context, we might not have window.location
     }
   }
-  
+
   // Try to extract from og:url meta tag
   if (!baseUrl || baseUrl === 'about:blank' || baseUrl === 'about:srcdoc') {
     try {
@@ -286,10 +310,10 @@ function injectCanonicalLinkIfMissing(
   // This ensures we always inject a canonical if we have a language
   if (!baseUrl || baseUrl === 'about:blank' || baseUrl === 'about:srcdoc') {
     try {
-      // Use language prefix for canonical
-      const canonicalPath = `/${currentLanguage}`;
+      // Use language prefix for canonical (or skip if showOriginLanguageCode is false)
+      const canonicalPath = skipLangPrefix ? '/' : `/${currentLanguage}`;
       const normalizedPath = normalizeUrlPath(canonicalPath);
-      
+
       const canonicalLink = doc.createElement('link');
       canonicalLink.setAttribute('rel', 'canonical');
       canonicalLink.setAttribute('href', normalizedPath);
@@ -303,7 +327,7 @@ function injectCanonicalLinkIfMissing(
   try {
     const url = new URL(baseUrl);
     let oldPath = url.pathname || '/';
-    
+
     // If the URL is just localhost with no meaningful path, try to extract from og:url
     if ((url.hostname === 'localhost' || url.hostname === '127.0.0.1') && oldPath === '/') {
       try {
@@ -324,19 +348,19 @@ function injectCanonicalLinkIfMissing(
         // Ignore errors
       }
     }
-    
-    // Use language injection for canonical path
-    const canonicalPath = injectLanguageIntoCanonicalPath(oldPath, currentLanguage);
-    
+
+    // Use language injection for canonical path (respecting skipLangPrefix)
+    const canonicalPath = injectLanguageIntoCanonicalPath(oldPath, currentLanguage, skipLangPrefix);
+
     // Normalize path (remove trailing slash except root)
     const normalizedPath = normalizeUrlPath(canonicalPath);
     url.pathname = normalizedPath;
-    
+
     // Remove frx_from_lang parameter if present
     url.searchParams.delete('frx_from_lang');
-    
+
     const canonicalUrl = url.toString();
-    
+
     // Create and inject the canonical link
     const canonicalLink = doc.createElement('link');
     canonicalLink.setAttribute('rel', 'canonical');
@@ -353,22 +377,22 @@ function injectCanonicalLinkIfMissing(
       } else if (baseUrl.startsWith('/')) {
         path = baseUrl.split('?')[0].split('#')[0];
       }
-      
-      // Use language injection for canonical path
-      const canonicalPath = injectLanguageIntoCanonicalPath(path, currentLanguage);
-      
+
+      // Use language injection for canonical path (respecting skipLangPrefix)
+      const canonicalPath = injectLanguageIntoCanonicalPath(path, currentLanguage, skipLangPrefix);
+
       const normalizedPath = normalizeUrlPath(canonicalPath);
-      
+
       const canonicalLink = doc.createElement('link');
       canonicalLink.setAttribute('rel', 'canonical');
       canonicalLink.setAttribute('href', normalizedPath);
       insertCanonicalLink(doc, canonicalLink);
     } catch {
-      // Final fallback: inject a simple language-based canonical
+      // Final fallback: inject a simple language-based canonical (or root if skipLangPrefix)
       try {
         const canonicalLink = doc.createElement('link');
         canonicalLink.setAttribute('rel', 'canonical');
-        canonicalLink.setAttribute('href', `/${currentLanguage}`);
+        canonicalLink.setAttribute('href', skipLangPrefix ? '/' : `/${currentLanguage}`);
         insertCanonicalLink(doc, canonicalLink);
       } catch {
         // If this also fails, don't inject
@@ -384,10 +408,14 @@ function injectCanonicalLinkIfMissing(
  * Works for:
  *   - absolute URLs: "https://www.cloudflare.com/" -> "https://www.cloudflare.com/fr-ca"
  *   - relative / proxy URLs: "/proxy/cloudflare.com/" -> "/proxy/cloudflare.com/fr-ca"
+ * 
+ * @param skipLangPrefix - If true, removes language prefix instead of adding it
+ *                         (used when showOriginLanguageCode is false for origin language)
  */
 export function rewriteProxyCanonicalHref(
   href: string | null,
-  currentLanguage?: string
+  currentLanguage?: string,
+  skipLangPrefix = false
 ): string | null {
   if (!href) {
     return href;
@@ -426,7 +454,7 @@ export function rewriteProxyCanonicalHref(
         suffix = path.slice(cut);
         path = path.slice(0, cut);
       }
-      
+
       const normalizedPath = normalizeUrlPath(path);
       // Clean up trailing "=" from suffix as well
       const cleanedSuffix = suffix.replace(/=+$/, '');
@@ -443,7 +471,7 @@ export function rewriteProxyCanonicalHref(
     try {
       const url = new URL(cleaned);
       const oldPath = url.pathname || '/';
-      const newPath = injectLanguageIntoCanonicalPath(oldPath, lang);
+      const newPath = injectLanguageIntoCanonicalPath(oldPath, lang, skipLangPrefix);
       // Normalize path (remove trailing slash except root)
       const normalizedPath = normalizeUrlPath(newPath);
       url.pathname = normalizedPath;
@@ -472,7 +500,7 @@ export function rewriteProxyCanonicalHref(
   }
 
   const oldPath = path || '/';
-  const newPath = injectLanguageIntoCanonicalPath(oldPath, lang);
+  const newPath = injectLanguageIntoCanonicalPath(oldPath, lang, skipLangPrefix);
   // Normalize path (remove trailing slash except root)
   const normalizedPath = normalizeUrlPath(newPath);
 
@@ -687,6 +715,11 @@ async function processAttributes(
   const tag = el.tagName.toLowerCase()
   const mutate = !!inject; // ← single switch controlling visible writes
 
+  // Determine if we should skip language prefix for canonical/og:url
+  const isOriginLang = !!(currentLanguage && config.originLanguage &&
+    currentLanguage.toLowerCase() === config.originLanguage.toLowerCase());
+  const skipLangPrefix = isOriginLang && config.showOriginLanguageCode === false;
+
   // Generic attribute handling
   for (const attr of TRANSLATABLE_ATTRIBUTES) {
     if (el.hasAttribute(`${FRENGLISH_DATA_KEY}-${attr}`)) continue
@@ -727,14 +760,14 @@ async function processAttributes(
     if (rel && rel.split(/\s+/).includes('canonical')) {
       const href = el.getAttribute('href');
       // Always clean frx_from_lang and normalize trailing slashes, even without language
-      const updated = rewriteProxyCanonicalHref(href, currentLanguage);
+      const updated = rewriteProxyCanonicalHref(href, currentLanguage, skipLangPrefix);
 
       if (updated && updated !== href) {
         el.setAttribute('href', updated);
         stampTranslated(el, currentLanguage);
       } else if (href && (href.includes('frx_from_lang') || (href !== '/' && href.endsWith('/')))) {
         // Even if rewriteProxyCanonicalHref didn't change it, clean it if needed
-        const cleaned = rewriteProxyCanonicalHref(href, currentLanguage);
+        const cleaned = rewriteProxyCanonicalHref(href, currentLanguage, skipLangPrefix);
         if (cleaned && cleaned !== href) {
           el.setAttribute('href', cleaned);
         }
@@ -759,7 +792,7 @@ async function processAttributes(
       '';
     const metaKey = rawKey.toLowerCase().trim();
 
-    const explicitSkip  = el.getAttribute('data-frenglish-skip')  === 'content';
+    const explicitSkip = el.getAttribute('data-frenglish-skip') === 'content';
     const explicitForce = el.getAttribute('data-frenglish-force') === 'content';
     if (explicitSkip) return;
 
@@ -782,7 +815,7 @@ async function processAttributes(
     if (metaKey === 'og:url') {
       if (mutate) {
         // Always normalize og:url - remove trailing slashes and frx_from_lang
-        const updated = rewriteProxyCanonicalHref(content, currentLanguage);
+        const updated = rewriteProxyCanonicalHref(content, currentLanguage, skipLangPrefix);
         if (updated) {
           // Always update if there's any difference (trailing slash, frx_from_lang, or language injection)
           if (updated !== content) {
@@ -825,11 +858,11 @@ async function processAttributes(
     const HARD_BLACKLIST_RE =
       /(?:^|:)(?:published_time|modified_time|updated_time|article:published_time|article:modified_time|date|datetime|release_date|expiry|expiration|url|image(?::(?:secure_url|url|width|height|type))?|video|audio|locale|site_name|site|app(?:[_:-]?id)?|id|token|verification|verify|robots|viewport|charset|theme-?color|color-?scheme|referrer|generator|format-detection|twitter:card|twitter:site|twitter:label1|twitter:data1|og:type)\b/;
 
-    const looksLikeUrl   = /^(?:https?:)?\/\//i.test(content) || /^(?:mailto:|tel:|data:)/i.test(content) || content.startsWith('/');
+    const looksLikeUrl = /^(?:https?:)?\/\//i.test(content) || /^(?:mailto:|tel:|data:)/i.test(content) || content.startsWith('/');
     const looksLikeEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(content);
     const looksLikeHexId = /^[0-9a-f]{16,}$/i.test(content);
-    const looksLikeDate  = /^\d{4}-\d{2}-\d{2}(?:[ tT]\d{2}:\d{2}(?::\d{2})?(?:Z|[+-]\d{2}:?\d{2})?)?$/.test(content);
-    const looksLikeJSON  = /^[\[\{].*[\]\}]$/.test(content);
+    const looksLikeDate = /^\d{4}-\d{2}-\d{2}(?:[ tT]\d{2}:\d{2}(?::\d{2})?(?:Z|[+-]\d{2}:?\d{2})?)?$/.test(content);
+    const looksLikeJSON = /^[\[\{].*[\]\}]$/.test(content);
 
     const hardBlocked =
       HARD_BLACKLIST_RE.test(metaKey) ||
@@ -1050,7 +1083,7 @@ export async function extractStrings(
 
   // Inject canonical link if it doesn't exist
   if (mutate && doc.head && currentLanguage) {
-    injectCanonicalLinkIfMissing(doc, currentLanguage)
+    injectCanonicalLinkIfMissing(doc, currentLanguage, config)
   }
 
   return {
