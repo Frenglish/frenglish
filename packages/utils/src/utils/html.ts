@@ -568,24 +568,10 @@ function serializeOpenPlaceholderTag(el: Element) {
   return s
 }
 
-function stampTranslated(el: Element, currentLanguage?: string, config?: Configuration) {
-  // Normalize and validate inputs
-  const lang = currentLanguage ? String(currentLanguage).trim().toLowerCase() : '';
-  const originLang = config?.originLanguage ? String(config.originLanguage).trim().toLowerCase() : '';
-  
-  if (!lang || !config || !originLang) {
-    return;
-  }
-  
-  // Never stamp the origin language
-  // Only stamp when we've actually TRANSLATED to a different language
-  const isOriginLang = lang === originLang;
-  if (isOriginLang) {
-    return;
-  }
-  
+function stampTranslated(el: Element, currentLanguage?: string) {
+  if (!currentLanguage) return;
   if (!el.hasAttribute('translated-lang')) {
-    el.setAttribute('translated-lang', currentLanguage!); // Use original case for the attribute (we know it's defined from the check above)
+    el.setAttribute('translated-lang', currentLanguage);
   }
 }
 
@@ -705,10 +691,6 @@ export const shouldCollapse = (el: Element) => {
     return false;
   }
 
-  // Never collapse form elements (select, option, etc.) - they should be processed normally
-  // to extract only text content, not HTML markup
-  if (ATOMIC_CHILD_SET.has(tag)) return false;
-
   if (tag === 'html' || tag === 'head' || tag === 'body' || SKIPPED_TAGS.has(tag)) return false;
   if (el.hasAttribute(FRENGLISH_DATA_KEY)) return false;
   if (el.querySelector(HEAVY_LEAF_SELECTOR)) return false;
@@ -746,9 +728,10 @@ async function processAttributes(
     const rep = await upsertPlaceholder(val, maps, inject, config, compress, masterStyleMap)
     if (!rep) continue
     if (injectDataKey) el.setAttribute(`${FRENGLISH_DATA_KEY}-${attr}`, rep.hash)
+    // Only replace visible value when we're injecting placeholders
     if (mutate) {
       el.setAttribute(attr, rep.newText)
-      stampTranslated(el, currentLanguage, config);
+      stampTranslated(el, currentLanguage);
     }
   }
 
@@ -765,24 +748,26 @@ async function processAttributes(
       if (injectDataKey) el.setAttribute(`${FRENGLISH_DATA_KEY}-value`, rep.hash)
       if (mutate) {
         el.setAttribute('value', rep.newText)
-        stampTranslated(el, currentLanguage, config);
+        stampTranslated(el, currentLanguage);
       }
     }
   }
 
-  // <link rel="canonical" href="/proxy/...">
+  // <link rel="canonical" href="/proxy/..."> — keep canonical in sync with language
   if (tag === 'link') {
     const relRaw = el.getAttribute('rel') || '';
     const rel = relRaw.toLowerCase();
     if (rel && rel.split(/\s+/).includes('canonical')) {
       const href = el.getAttribute('href');
-      const updated = rewriteProxyCanonicalHref(href, currentLanguage);
+      // Always clean frx_from_lang and normalize trailing slashes, even without language
+      const updated = rewriteProxyCanonicalHref(href, currentLanguage, skipLangPrefix);
 
-      if (mutate && updated && updated !== href) {
+      if (updated && updated !== href) {
         el.setAttribute('href', updated);
-        stampTranslated(el, currentLanguage, config);
-      } else if (mutate && href && (href.includes('frx_from_lang') || (href !== '/' && href.endsWith('/')))) {
-        const cleaned = rewriteProxyCanonicalHref(href, currentLanguage);
+        stampTranslated(el, currentLanguage);
+      } else if (href && (href.includes('frx_from_lang') || (href !== '/' && href.endsWith('/')))) {
+        // Even if rewriteProxyCanonicalHref didn't change it, clean it if needed
+        const cleaned = rewriteProxyCanonicalHref(href, currentLanguage, skipLangPrefix);
         if (cleaned && cleaned !== href) {
           el.setAttribute('href', cleaned);
         }
@@ -793,10 +778,13 @@ async function processAttributes(
   // <meta name|property|itemprop=... content="...">
   if (tag === 'meta') {
     const specificKeyAttr = `${FRENGLISH_DATA_KEY}-content`;
+
     const content = el.getAttribute('content') || '';
     if (!content.trim()) return;
 
     const isHash = /^[a-f0-9]{64}$/i.test(content);
+
+    // Which key field is used on this tag?
     const rawKey =
       el.getAttribute('name') ||
       el.getAttribute('property') ||
@@ -808,49 +796,65 @@ async function processAttributes(
     const explicitForce = el.getAttribute('data-frenglish-force') === 'content';
     if (explicitSkip) return;
 
-    // Special case: og:locale
+    // Special case: keep og:locale in sync with the translated language,
+    // but never treat it as translatable content.
     if (metaKey === 'og:locale') {
       if (mutate && currentLanguage) {
         const mapped = languageToOgLocale(currentLanguage, content, config);
         if (mapped && mapped !== content) {
           el.setAttribute('content', mapped);
-          stampTranslated(el, currentLanguage, config);
+          stampTranslated(el, currentLanguage);
         }
       }
+      // Always return here: og:locale is not part of the text map.
       return;
     }
 
-    // Special case: og:url
+    // Special case for og:url – rewrite URL path with language segment
+    // Always strip frx_from_lang and remove trailing slashes, even without language
     if (metaKey === 'og:url') {
       if (mutate) {
-        const updated = rewriteProxyCanonicalHref(content, currentLanguage);
-        if (updated && updated !== content) {
-          el.setAttribute('content', updated);
-          stampTranslated(el, currentLanguage, config);
-        } else if (content && ((content !== '/' && content.endsWith('/')) || content.endsWith('='))) {
-          try {
-            const url = new URL(content);
-            const normalizedPath = normalizeUrlPath(url.pathname);
-            if (normalizedPath !== url.pathname || content.endsWith('=')) {
-              url.pathname = normalizedPath;
-              let result = url.toString().replace(/=+$/, '');
-              if (result !== content) {
-                el.setAttribute('content', result);
+        // Always normalize og:url - remove trailing slashes and frx_from_lang
+        const updated = rewriteProxyCanonicalHref(content, currentLanguage, skipLangPrefix);
+        if (updated) {
+          // Always update if there's any difference (trailing slash, frx_from_lang, or language injection)
+          if (updated !== content) {
+            el.setAttribute('content', updated);
+            stampTranslated(el, currentLanguage);
+          } else if (content && ((content !== '/' && content.endsWith('/')) || content.endsWith('='))) {
+            // Force normalization even if rewriteProxyCanonicalHref returned unchanged
+            // This handles edge cases where the function might not detect the trailing slash or "="
+            try {
+              const url = new URL(content);
+              const normalizedPath = normalizeUrlPath(url.pathname);
+              if (normalizedPath !== url.pathname || content.endsWith('=')) {
+                url.pathname = normalizedPath;
+                let result = url.toString();
+                // Clean up any trailing "="
+                result = result.replace(/=+$/, '');
+                if (result !== content) {
+                  el.setAttribute('content', result);
+                  stampTranslated(el, currentLanguage);
+                }
               }
-            }
-          } catch {
-            let normalized = content.replace(/\/+$/, '') || '/';
-            normalized = normalized.replace(/=+$/, '');
-            if (normalized !== content && normalized !== '/') {
-              el.setAttribute('content', normalized);
+            } catch {
+              // If URL parsing fails, try simple string replacement
+              let normalized = content.replace(/\/+$/, '') || '/';
+              // Also remove trailing "="
+              normalized = normalized.replace(/=+$/, '');
+              if (normalized !== content && normalized !== '/') {
+                el.setAttribute('content', normalized);
+                stampTranslated(el, currentLanguage);
+              }
             }
           }
         }
       }
+      // Do NOT treat og:url as translatable content.
       return;
     }
 
-    // HARD blacklist check
+    // HARD blacklist: never hash/translate these keys unless explicitForce is set.
     const HARD_BLACKLIST_RE =
       /(?:^|:)(?:published_time|modified_time|updated_time|article:published_time|article:modified_time|date|datetime|release_date|expiry|expiration|url|image(?::(?:secure_url|url|width|height|type))?|video|audio|locale|site_name|site|app(?:[_:-]?id)?|id|token|verification|verify|robots|viewport|charset|theme-?color|color-?scheme|referrer|generator|format-detection|twitter:card|twitter:site|twitter:label1|twitter:data1|og:type)\b/;
 
@@ -871,12 +875,13 @@ async function processAttributes(
     const shouldTranslate = explicitForce || (!hardBlocked && allowByKey);
     if (!shouldTranslate) return;
 
+    // Build/Reuse placeholder
     let hash: string;
     let newText: string;
 
     if (isHash) {
       hash = content;
-      newText = content;
+      newText = content; // already placeholder
     } else {
       const rep = await upsertPlaceholder(content, maps, inject, config, compress, masterStyleMap);
       if (!rep) return;
@@ -885,13 +890,13 @@ async function processAttributes(
     }
 
     if (injectDataKey) {
-      el.setAttribute(specificKeyAttr, hash);
-      el.setAttribute('data-frenglish-attr', 'content');
+      el.setAttribute(specificKeyAttr, hash);             // data-frenglish-key-content="..."
+      el.setAttribute('data-frenglish-attr', 'content');  // tells applier which attribute to set
     }
 
     if (mutate) {
-      el.setAttribute('content', newText);
-      stampTranslated(el, currentLanguage, config);
+      el.setAttribute('content', newText);                // inject placeholder for apply step
+      stampTranslated(el, currentLanguage);
     }
     return
   }
@@ -1073,7 +1078,7 @@ export async function extractStrings(
           if (injectDataKey) el.setAttribute(FRENGLISH_DATA_KEY, rep.hash)
           if (mutate) {
             el.innerHTML = rep.newText
-            stampTranslated(el, currentLanguage, config);
+            stampTranslated(el, currentLanguage);
             try {
               if (PLACEHOLDER_TAG_RE.test(rep.newText)) {
                 const localPaired = scanPairedPlaceholders(rep.newText)
@@ -1114,7 +1119,7 @@ export async function extractStrings(
           if (injectDataKey) parent.setAttribute(FRENGLISH_DATA_KEY, rep.hash)
           if (mutate) {
             (node as Text).textContent = rep.newText
-            stampTranslated(parent, currentLanguage, config);
+            stampTranslated(parent, currentLanguage);
           }
         }
         return
@@ -1135,8 +1140,8 @@ export async function extractStrings(
         if (mutate) {
           const span = doc.createElement('span')
           if (injectDataKey) span.setAttribute(FRENGLISH_DATA_KEY, rep.hash)
-          stampTranslated(span, currentLanguage, config);
-          stampTranslated(parent, currentLanguage, config);
+          stampTranslated(span, currentLanguage);
+          stampTranslated(parent, currentLanguage);
           span.textContent = rep.newText
           parent.replaceChild(span, node)
         } else {
