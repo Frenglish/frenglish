@@ -201,16 +201,13 @@ function stripFrxFromLang(urlString: string): string {
 }
 
 /**
- * Normalizes a URL path by removing trailing slashes (except root)
- * Also removes trailing = signs which shouldn't be in paths
+ * Normalizes a URL path by removing trailing = signs.
+ * PRESERVES trailing slashes to respect site conventions.
  */
 function normalizeUrlPath(path: string): string {
   if (!path || path === '/') return '/';
   // Remove trailing = signs (these shouldn't be in paths)
-  let normalized = path.replace(/=+$/, '');
-  // Remove trailing slash if present and not root
-  normalized = normalized.endsWith('/') && normalized.length > 1 ? normalized.slice(0, -1) : normalized;
-  return normalized;
+  return path.replace(/=+$/, '');
 }
 
 /**
