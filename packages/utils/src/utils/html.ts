@@ -83,21 +83,10 @@ export const PLACEHOLDER_TAG_RE = /<(?:sty|href|excl)\d+\b[^>]*>/i;
 // ---------------------------------------------------------------------------
 // Utility helpers
 // ---------------------------------------------------------------------------
+
 /**
  * Injects the language segment into a path for canonical URLs.
- *
- * Examples (lang = "fr-ca", skipPrefix = false):
- *   "/"                          -> "/fr-ca"
- *   "/contact"                   -> "/fr-ca/contact"
- *   "/fr/contact"                -> "/fr-ca/contact"
- *   "/fr-ca/contact"             -> "/fr-ca/contact" (no change)
- *   "/proxy/cloudflare.com/"     -> "/proxy/cloudflare.com/fr-ca/"
- *   "/proxy/cloudflare.com/en/"  -> "/proxy/cloudflare.com/fr-ca/"
- * 
- * Examples (lang = "en", skipPrefix = true):
- *   "/"                          -> "/"
- *   "/contact"                   -> "/contact"
- *   "/en/contact"                -> "/contact" (strips existing lang prefix)
+ * Preserves trailing slash from original path.
  */
 function injectLanguageIntoCanonicalPath(path: string, lang: string, skipPrefix = false): string {
   const lowerLang = (lang || '').toLowerCase().trim();
@@ -109,15 +98,25 @@ function injectLanguageIntoCanonicalPath(path: string, lang: string, skipPrefix 
   let basePath = path.replace(/\/{2,}/g, '/');
   if (!basePath.startsWith('/')) basePath = '/' + basePath;
 
-  // Drop trailing slash for segment logic (we'll restore if needed)
+  // IMPORTANT: Remember if original path had trailing slash
+  const hadTrailingSlash = basePath.length > 1 && basePath.endsWith('/');
+
+  // Drop trailing slash for segment logic
   let work = basePath;
-  if (work.length > 1 && work.endsWith('/')) {
+  if (hadTrailingSlash) {
     work = work.slice(0, -1);
   }
 
   const segs = work.split('/').filter(Boolean);
   const isLangLike = (s: string) =>
     /^[a-z]{2}(?:-[a-z0-9]{2,})?$/.test((s || '').toLowerCase());
+
+  // Helper to restore trailing slash if original had one
+  const maybeAddTrailingSlash = (p: string) => {
+    if (!hadTrailingSlash) return p;
+    if (p === '/') return '/';  // Don't add trailing slash to root
+    return p.endsWith('/') ? p : p + '/';
+  };
 
   // If skipPrefix, just return normalized path without language
   if (skipPrefix) {
@@ -127,15 +126,17 @@ function injectLanguageIntoCanonicalPath(path: string, lang: string, skipPrefix 
       const host = segs[1];
       const rest = segs.slice(2);
       const newRest = rest.length && isLangLike(rest[0]) ? rest.slice(1) : rest;
-      return newRest.length ? '/' + ['proxy', host, ...newRest].join('/') : '/' + ['proxy', host].join('/');
+      const result = newRest.length ? '/' + ['proxy', host, ...newRest].join('/') : '/' + ['proxy', host].join('/');
+      return maybeAddTrailingSlash(result);
     }
     const rest = segs.length && isLangLike(segs[0]) ? segs.slice(1) : segs;
-    return rest.length ? '/' + rest.join('/') : '/';
+    const result = rest.length ? '/' + rest.join('/') : '/';
+    return maybeAddTrailingSlash(result);
   }
 
   // Root: just "/"
   if (!segs.length) {
-    return `/${lowerLang}`;
+    return `/${lowerLang}`;  // No trailing slash for language-only root
   }
 
   // Proxy pattern: /proxy/{host}/[lang]/...
@@ -144,8 +145,8 @@ function injectLanguageIntoCanonicalPath(path: string, lang: string, skipPrefix 
     const rest = segs.slice(2);
 
     if (rest.length && isLangLike(rest[0]) && rest[0].toLowerCase() === lowerLang) {
-      // already has this lang - return normalized (no trailing slash)
-      return work;
+      // already has this lang - return normalized with original trailing slash preference
+      return maybeAddTrailingSlash(work);
     }
 
     const newRest =
@@ -153,13 +154,14 @@ function injectLanguageIntoCanonicalPath(path: string, lang: string, skipPrefix 
         ? [lowerLang, ...rest.slice(1)]
         : [lowerLang, ...rest];
 
-    return '/' + ['proxy', host, ...newRest].join('/');
+    const result = '/' + ['proxy', host, ...newRest].join('/');
+    return maybeAddTrailingSlash(result);
   }
 
   // Non-proxy path
   if (segs.length && isLangLike(segs[0]) && segs[0].toLowerCase() === lowerLang) {
-    // Already prefixed with this language - return normalized (no trailing slash)
-    return work;
+    // Already prefixed with this language - return with original trailing slash preference
+    return maybeAddTrailingSlash(work);
   }
 
   const rest =
@@ -167,7 +169,8 @@ function injectLanguageIntoCanonicalPath(path: string, lang: string, skipPrefix 
       ? segs.slice(1) // replace existing lang prefix
       : segs;         // prepend language
 
-  return '/' + [lowerLang, ...rest].join('/');
+  const result = '/' + [lowerLang, ...rest].join('/');
+  return maybeAddTrailingSlash(result);
 }
 
 /**
