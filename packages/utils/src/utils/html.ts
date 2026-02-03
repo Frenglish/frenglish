@@ -23,7 +23,7 @@ export const FRENGLISH_DATA_KEY = 'data-frenglish-key'
 // Attributes we replace with placeholders
 export const TRANSLATABLE_ATTRIBUTES = new Set([
   'alt', 'title', 'description', 'placeholder',
-  'aria-label', 'aria-labelledby', 'aria-describedby', 'aria-valuetext',
+  'aria-label', 'aria-valuetext',
   'data-tooltip', 'data-title', 'accesskey', 'prompt', 'label', 'textarea',
 ])
 
