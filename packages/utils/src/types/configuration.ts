@@ -5,6 +5,8 @@ export interface Configuration {
     languages: string[] | null;
     languageSelector: LanguageSelector | null;
     excludedTranslationBlocks: ExcludedTranslationBlock[] | null;
+    /** Inline scripts whose readable strings are translated (opt-in, set per project). */
+    translatableScripts?: TranslatableScript[] | null;
     rules: string | null;
     knowledgeBaseFiles: string[];
     autoMergeToBaseBranch: boolean;
@@ -60,6 +62,11 @@ export interface ExcludedTranslationBlockItem {
   id: string;
   selector: string;
   description: string;
+}
+
+/** Opts an inline <script> into translation: its source must contain `contains`. */
+export interface TranslatableScript {
+  contains: string;
 }
 
 export interface ExcludedTranslationBlock {

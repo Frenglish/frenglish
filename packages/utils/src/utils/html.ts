@@ -7,6 +7,7 @@ import { extractTextComponents } from './utils.js'
 import { CompressionResult, ExtractionResult, MasterStyleMap, OriginalTagInfo } from '../types/html.js'
 import { Configuration } from '../types/configuration.js'
 import { FlatJSON } from '../types/translation.js'
+import { extractScriptStrings, isJavaScriptType, isScriptAlreadyTranslated, isTranslatableScript, SCRIPT_LANG_ATTRIBUTE } from './scriptStrings.js'
 
 const { SHA256 } = pkg
 
@@ -1100,6 +1101,24 @@ export async function extractStrings(
 
       const tag = el.tagName.toLowerCase()
       if (SKIPPED_TAGS.has(tag)) {
+        // Opted-in inline scripts: read their readable strings into the map, never
+        // touch the script. A script we already translated carries a language stamp
+        // and is skipped, so translated text is never re-extracted as source text
+        // and requested again.
+        if (
+          tag === 'script' &&
+          !el.hasAttribute('src') &&
+          isJavaScriptType(el.getAttribute('type')) &&
+          !isScriptAlreadyTranslated(el.getAttribute(SCRIPT_LANG_ATTRIBUTE), config) &&
+          isTranslatableScript(el.textContent, config)
+        ) {
+          for (const { hash, text } of await extractScriptStrings(el.textContent || '')) {
+            if (maps.forward[hash]) continue
+            maps.forward[hash] = text
+            maps.reverse[canonicalizeForHash(text)] ??= hash
+          }
+          return
+        }
         if (tag === 'script' && el.id === '__NEXT_DATA__') {
           try {
             const json = JSON.parse(el.textContent || '{}')
